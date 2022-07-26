@@ -24,13 +24,13 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.GPG_PASSPHRASE }}
-      - name: Run GoReleaser
+      - env:
+          API_VERSION: ${{ steps.pluginDescription.outputs.apiVersion }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.gpgImport.outputs.fingerprint }}
+        name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v3
         with:
           args: release --rm-dist
           distribution: goreleaser
           version: latest
-        env:
-          API_VERSION: ${{ steps.pluginDescription.outputs.apiVersion }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GPG_FINGERPRINT: ${{ steps.gpgImport.outputs.fingerprint }}

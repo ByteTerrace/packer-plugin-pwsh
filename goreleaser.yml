@@ -6,19 +6,24 @@ before:
     - make plugin-check
 builds:
   - binary: '{{ .ProjectName }}_v{{ .Version }}_{{ .Env.API_VERSION }}_{{ .Os }}_{{ .Arch }}'
-    id: plugin-check
     flags:
       - -trimpath #removes all file system paths from the compiled executable
-    ldflags:
-      - '-s -w -X {{ .ModulePath }}/version.Version={{.Version}} -X {{ .ModulePath }}/version.VersionPrerelease= '
+    id: plugin-check
     goarch:
       - amd64
     goos:
       - linux
+    ldflags:
+      - '-s -w -X {{ .ModulePath }}/version.Version={{.Version}} -X {{ .ModulePath }}/version.VersionPrerelease= '
     mod_timestamp: '{{ .CommitTimestamp }}'
   - binary: '{{ .ProjectName }}_v{{ .Version }}_{{ .Env.API_VERSION }}_{{ .Os }}_{{ .Arch }}'
     flags:
       - -trimpath #removes all file system paths from the compiled executable
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - '386'
     goos:
       - darwin
       - freebsd
@@ -27,11 +32,6 @@ builds:
       - openbsd
       - solaris
       - windows
-    goarch:
-      - amd64
-      - arm
-      - arm64
-      - '386'
     ignore:
       - goos: darwin
         goarch: '386'
@@ -54,12 +54,12 @@ signs:
   - artifacts: checksum
     args:
       - "--batch"
-      - "--detach-sign"
-      - "${artifact}"
       - "--local-user"
       - "{{ .Env.GPG_FINGERPRINT }}"
       - "--output"
       - "${signature}"
+      - "--detach-sign"
+      - "${artifact}"
 release:
   draft: true
 changelog:
