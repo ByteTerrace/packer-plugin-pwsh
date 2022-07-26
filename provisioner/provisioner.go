@@ -50,7 +50,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if p.config.ExecuteCommand == "" {
-		p.config.ExecuteCommand = "FOR /F \"tokens=* USEBACKQ\" %F IN (`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell ^| tail --lines=1`) DO (SET command=start \"\" \"%F\" -ExecutionPolicy \"Bypass\" -Command \"Write-Host 'Hello packer!'\"); && %command%"
+		p.config.ExecuteCommand = "FOR /F \"tokens=* USEBACKQ\" %F IN (`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`) DO (\"%F\" -ExecutionPolicy \"Bypass\" -Command \"Write-Host 'Hello packer!';\");"
 	}
 
 	return nil
