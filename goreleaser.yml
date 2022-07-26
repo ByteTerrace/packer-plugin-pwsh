@@ -1,0 +1,66 @@
+env:
+  - CGO_ENABLED=0
+before:
+  hooks:
+    - go test ./...
+    - make plugin-check
+builds:
+  - binary: '{{ .ProjectName }}_v{{ .Version }}_{{ .Env.API_VERSION }}_{{ .Os }}_{{ .Arch }}'
+    id: plugin-check
+    flags:
+      - -trimpath #removes all file system paths from the compiled executable
+    ldflags:
+      - '-s -w -X {{ .ModulePath }}/version.Version={{.Version}} -X {{ .ModulePath }}/version.VersionPrerelease= '
+    goarch:
+      - amd64
+    goos:
+      - linux
+    mod_timestamp: '{{ .CommitTimestamp }}'
+  - binary: '{{ .ProjectName }}_v{{ .Version }}_{{ .Env.API_VERSION }}_{{ .Os }}_{{ .Arch }}'
+    flags:
+      - -trimpath #removes all file system paths from the compiled executable
+    goos:
+      - darwin
+      - freebsd
+      - linux
+      - netbsd
+      - openbsd
+      - solaris
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+      - '386'
+    ignore:
+      - goos: darwin
+        goarch: '386'
+      - goos: linux
+        goarch: amd64
+      - goos: openbsd
+        goarch: arm64
+    ldflags:
+      - '-s -w -X {{ .ModulePath }}/version.Version={{.Version}} -X {{ .ModulePath }}/version.VersionPrerelease= '
+    mod_timestamp: '{{ .CommitTimestamp }}'
+archives:
+- format: zip
+  files:
+    - none*
+  name_template: '{{ .ProjectName }}_v{{ .Version }}_{{ .Env.API_VERSION }}_{{ .Os }}_{{ .Arch }}'
+checksum:
+  name_template: '{{ .ProjectName }}_v{{ .Version }}_SHA256SUMS'
+  algorithm: sha256
+signs:
+  - artifacts: checksum
+    args:
+      - "--batch"
+      - "--detach-sign"
+      - "${artifact}"
+      - "--local-user"
+      - "{{ .Env.GPG_FINGERPRINT }}"
+      - "--output"
+      - "${signature}"
+release:
+  draft: true
+changelog:
+  skip: true
