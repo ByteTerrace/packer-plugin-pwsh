@@ -4,8 +4,10 @@ package pwsh
 
 import (
 	"context"
+	"time"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer-plugin-sdk/retry"
 	"github.com/hashicorp/packer-plugin-sdk/shell"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
 	"github.com/hashicorp/packer-plugin-sdk/template/interpolate"
@@ -54,8 +56,20 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, generatedData map[string]interface{}) error {
+	startTimeoout := (7 * time.Minute)
+
 	p.communicator = comm
 	p.generatedData = generatedData
+
+	e := retry.Config{StartTimeout: startTimeoout}.Run(ctx, func(ctx context.Context) error {
+		cmd := &packersdk.RemoteCmd{Command: p.config.ExecuteCommand}
+
+		return cmd.RunWithUi(ctx, comm, ui)
+	})
+
+	if e != nil {
+		return e
+	}
 
 	return nil
 }
