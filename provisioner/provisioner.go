@@ -27,7 +27,7 @@ type Provisioner struct {
 
 func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
 func (p *Provisioner) Prepare(raws ...interface{}) error {
-	err := config.Decode(
+	e := config.Decode(
 		&p.config,
 		&config.DecodeOpts{
 			DecodeHooks:        append(config.DefaultDecodeHookFuncs),
@@ -43,8 +43,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		raws...,
 	)
 
-	if err != nil {
-		return err
+	if e != nil {
+		return e
+	}
+
+	if p.config.ExecuteCommand == "" {
+		p.config.ExecuteCommand = "pwsh -Command \"Write-Host 'Hello packer!;'\" -ExecutionPolicy \"Bypass\""
 	}
 
 	return nil

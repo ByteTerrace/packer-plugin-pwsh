@@ -16,10 +16,10 @@ func main() {
 	pluginSet.RegisterProvisioner(plugin.DEFAULT_NAME, new(pwsh.Provisioner))
 	pluginSet.SetVersion(version.PluginVersion)
 
-	error := pluginSet.Run()
+	e := pluginSet.Run()
 
-	if error != nil {
-		fmt.Fprintln(os.Stderr, error.Error())
+	if e != nil {
+		fmt.Fprintln(os.Stderr, e.Error())
 		os.Exit(1)
 	}
 }

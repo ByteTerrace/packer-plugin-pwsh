@@ -21,16 +21,16 @@ builds:
       - -trimpath #removes all file system paths from the compiled executable
     goarch:
       - amd64
-      - arm
-      - arm64
-      - '386'
+      #- arm
+      #- arm64
+      #- '386'
     goos:
-      - darwin
-      - freebsd
-      - linux
-      - netbsd
-      - openbsd
-      - solaris
+      #- darwin
+      #- freebsd
+      #- linux
+      #- netbsd
+      #- openbsd
+      #- solaris
       - windows
     ignore:
       - goos: darwin
