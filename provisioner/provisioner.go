@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"runtime"
 	"time"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
@@ -26,13 +26,6 @@ import (
 const (
 	defaultStartTimeout = (7 * time.Minute)
 	defaultTries        = 1
-)
-
-var psEscape = strings.NewReplacer(
-	"$", "`$",
-	"\"", "`\"",
-	"`", "``",
-	"'", "`'",
 )
 
 type Config struct {
@@ -72,16 +65,33 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		return e
 	}
 
+	var defaultElevatedEnvVarFormat = ""
+	var defaultEnvVarFormat = ""
+	var defaultExecuteCommand = ""
+	var defaultRemoteEnvVarPathFormat = ""
+	var defaultRemotePathFormat = ""
+
+	switch runtime.GOOS {
+	case "windows":
+		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
+		defaultEnvVarFormat = `{$Env:%s}="%s"`
+		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
+		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
+		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
+	default:
+		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
+	}
+
 	if "" == p.config.ElevatedEnvVarFormat {
-		p.config.ElevatedEnvVarFormat = `$env:%s="%s"; `
+		p.config.ElevatedEnvVarFormat = defaultElevatedEnvVarFormat
 	}
 
 	if "" == p.config.EnvVarFormat {
-		p.config.EnvVarFormat = `$env:%s="%s"; `
+		p.config.EnvVarFormat = defaultEnvVarFormat
 	}
 
 	if "" == p.config.ExecuteCommand {
-		p.config.ExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
+		p.config.ExecuteCommand = defaultExecuteCommand
 	}
 
 	if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
@@ -89,11 +99,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.RemoteEnvVarPath {
-		p.config.RemoteEnvVarPath = fmt.Sprintf(`c:/Windows/Temp/packer-pwsh-variables-%s.ps1`, uuid.TimeOrderedUUID())
+		p.config.RemoteEnvVarPath = fmt.Sprintf(defaultRemoteEnvVarPathFormat, uuid.TimeOrderedUUID())
 	}
 
 	if "" == p.config.RemotePath {
-		p.config.RemotePath = fmt.Sprintf(`c:/Windows/Temp/packer-pwsh-script-%s.ps1`, uuid.TimeOrderedUUID())
+		p.config.RemotePath = fmt.Sprintf(defaultRemotePathFormat, uuid.TimeOrderedUUID())
 	}
 
 	if nil == p.config.Scripts {
@@ -140,7 +150,6 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	contextData["Path"] = config.RemotePath
 	contextData["Vars"] = config.RemoteEnvVarPath
 	config.ctx.Data = contextData
-
 	command, e := interpolate.Render(config.ExecuteCommand, &config.ctx)
 
 	if nil != e {
