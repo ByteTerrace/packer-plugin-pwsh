@@ -327,5 +327,9 @@ func (p *Provisioner) updatePowerShellInstallation(command string, context conte
 		ui,
 	)
 
+	if nil != e {
+		return e
+	}
+
 	return nil
 }
