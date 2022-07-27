@@ -10,24 +10,26 @@ import (
 // FlatConfig is an auto-generated flat version of Config.
 // Where the contents of a field with a `mapstructure:,squash` tag are bubbled up.
 type FlatConfig struct {
-	PackerBuildName     *string           `mapstructure:"packer_build_name" cty:"packer_build_name" hcl:"packer_build_name"`
-	PackerBuilderType   *string           `mapstructure:"packer_builder_type" cty:"packer_builder_type" hcl:"packer_builder_type"`
-	PackerCoreVersion   *string           `mapstructure:"packer_core_version" cty:"packer_core_version" hcl:"packer_core_version"`
-	PackerDebug         *bool             `mapstructure:"packer_debug" cty:"packer_debug" hcl:"packer_debug"`
-	PackerForce         *bool             `mapstructure:"packer_force" cty:"packer_force" hcl:"packer_force"`
-	PackerOnError       *string           `mapstructure:"packer_on_error" cty:"packer_on_error" hcl:"packer_on_error"`
-	PackerUserVars      map[string]string `mapstructure:"packer_user_variables" cty:"packer_user_variables" hcl:"packer_user_variables"`
-	PackerSensitiveVars []string          `mapstructure:"packer_sensitive_variables" cty:"packer_sensitive_variables" hcl:"packer_sensitive_variables"`
-	Inline              []string          `cty:"inline" hcl:"inline"`
-	Script              *string           `cty:"script" hcl:"script"`
-	Scripts             []string          `cty:"scripts" hcl:"scripts"`
-	ValidExitCodes      []int             `mapstructure:"valid_exit_codes" cty:"valid_exit_codes" hcl:"valid_exit_codes"`
-	Vars                []string          `mapstructure:"environment_vars" cty:"environment_vars" hcl:"environment_vars"`
-	Env                 map[string]string `mapstructure:"env" cty:"env" hcl:"env"`
-	EnvVarFormat        *string           `mapstructure:"env_var_format" cty:"env_var_format" hcl:"env_var_format"`
-	Binary              *bool             `cty:"binary" hcl:"binary"`
-	RemotePath          *string           `mapstructure:"remote_path" cty:"remote_path" hcl:"remote_path"`
-	ExecuteCommand      *string           `mapstructure:"execute_command" cty:"execute_command" hcl:"execute_command"`
+	PackerBuildName      *string           `mapstructure:"packer_build_name" cty:"packer_build_name" hcl:"packer_build_name"`
+	PackerBuilderType    *string           `mapstructure:"packer_builder_type" cty:"packer_builder_type" hcl:"packer_builder_type"`
+	PackerCoreVersion    *string           `mapstructure:"packer_core_version" cty:"packer_core_version" hcl:"packer_core_version"`
+	PackerDebug          *bool             `mapstructure:"packer_debug" cty:"packer_debug" hcl:"packer_debug"`
+	PackerForce          *bool             `mapstructure:"packer_force" cty:"packer_force" hcl:"packer_force"`
+	PackerOnError        *string           `mapstructure:"packer_on_error" cty:"packer_on_error" hcl:"packer_on_error"`
+	PackerUserVars       map[string]string `mapstructure:"packer_user_variables" cty:"packer_user_variables" hcl:"packer_user_variables"`
+	PackerSensitiveVars  []string          `mapstructure:"packer_sensitive_variables" cty:"packer_sensitive_variables" hcl:"packer_sensitive_variables"`
+	Inline               []string          `cty:"inline" hcl:"inline"`
+	Script               *string           `cty:"script" hcl:"script"`
+	Scripts              []string          `cty:"scripts" hcl:"scripts"`
+	ValidExitCodes       []int             `mapstructure:"valid_exit_codes" cty:"valid_exit_codes" hcl:"valid_exit_codes"`
+	Vars                 []string          `mapstructure:"environment_vars" cty:"environment_vars" hcl:"environment_vars"`
+	Env                  map[string]string `mapstructure:"env" cty:"env" hcl:"env"`
+	EnvVarFormat         *string           `mapstructure:"env_var_format" cty:"env_var_format" hcl:"env_var_format"`
+	Binary               *bool             `cty:"binary" hcl:"binary"`
+	RemotePath           *string           `mapstructure:"remote_path" cty:"remote_path" hcl:"remote_path"`
+	ExecuteCommand       *string           `mapstructure:"execute_command" cty:"execute_command" hcl:"execute_command"`
+	ElevatedEnvVarFormat *string           `mapstructure:"elevated_env_var_format" cty:"elevated_env_var_format" hcl:"elevated_env_var_format"`
+	RemoteEnvVarPath     *string           `mapstructure:"remote_env_var_path" cty:"remote_env_var_path" hcl:"remote_env_var_path"`
 }
 
 // FlatMapstructure returns a new FlatConfig.
@@ -60,6 +62,8 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"binary":                     &hcldec.AttrSpec{Name: "binary", Type: cty.Bool, Required: false},
 		"remote_path":                &hcldec.AttrSpec{Name: "remote_path", Type: cty.String, Required: false},
 		"execute_command":            &hcldec.AttrSpec{Name: "execute_command", Type: cty.String, Required: false},
+		"elevated_env_var_format":    &hcldec.AttrSpec{Name: "elevated_env_var_format", Type: cty.String, Required: false},
+		"remote_env_var_path":        &hcldec.AttrSpec{Name: "remote_env_var_path", Type: cty.String, Required: false},
 	}
 	return s
 }
