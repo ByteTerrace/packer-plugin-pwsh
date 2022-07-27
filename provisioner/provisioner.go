@@ -8,8 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -70,7 +68,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		raws...,
 	)
 
-	if e != nil {
+	if nil != e {
 		return e
 	}
 
@@ -105,12 +103,14 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Vars = make([]string, 0)
 	}
 
-	var errs error
-
 	if (nil == p.config.Inline) && (0 == len(p.config.Scripts)) {
-		errs = packersdk.MultiErrorAppend(errs, errors.New("Either a script file or an inline script must be specified."))
-	} else if len(p.config.Scripts) > 0 && p.config.Inline != nil {
-		errs = packersdk.MultiErrorAppend(errs, errors.New("Only a script file or an inline script can be specified, not both."))
+		e = packersdk.MultiErrorAppend(e, errors.New("Either a script file or an inline script must be specified."))
+	} else if (nil != p.config.Inline) && (0 < len(p.config.Scripts)) {
+		e = packersdk.MultiErrorAppend(e, errors.New("Only a script file or an inline script can be specified, not both."))
+	}
+
+	if nil != e {
+		return e
 	}
 
 	return nil
@@ -119,78 +119,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 	p.communicator = comm
 	p.generatedData = generatedData
 
-	scripts := make([]string, len(p.config.Scripts))
-
-	copy(scripts, p.config.Scripts)
-
-	if nil != p.config.Inline {
-		temp, e := extractScript(p)
-
-		if nil != e {
-			ui.Error(fmt.Sprintf("Unable to extract inline scripts into a file: %s.", e))
-		}
-
-		scripts = append(scripts, temp)
-
-		defer os.Remove(temp)
-	}
-
-	uploadedScripts := []string{p.config.RemoteEnvVarPath}
-
-	for _, path := range scripts {
-		ui.Say(fmt.Sprintf("Provisioning with powershell script: %s", path))
-
-		log.Printf("Opening %s for reading", path)
-		fi, e := os.Stat(path)
-		if e != nil {
-			return fmt.Errorf("Error stating powershell script: %s", e)
-		}
-		if os.IsPathSeparator(p.config.RemotePath[len(p.config.RemotePath)-1]) {
-			// path is a directory
-			p.config.RemotePath += filepath.Base(fi.Name())
-		}
-		f, e := os.Open(path)
-		if e != nil {
-			return fmt.Errorf("Error opening powershell script: %s", e)
-		}
-		defer f.Close()
-
-		command, e := p.createCommandTextNonPrivileged()
-		if e != nil {
-			return fmt.Errorf("Error processing command: %s", e)
-		}
-
-		// Upload the file and run the command. Do this in the context of a
-		// single retryable function so that we don't end up with the case
-		// that the upload succeeded, a restart is initiated, and then the
-		// command is executed but the file doesn't exist any longer.
-		var cmd *packersdk.RemoteCmd
-		e = retry.Config{StartTimeout: startTimeout}.Run(ctx, func(ctx context.Context) error {
-			if _, e := f.Seek(0, 0); e != nil {
-				return e
-			}
-			if e := comm.Upload(p.config.RemotePath, f, &fi); e != nil {
-				return fmt.Errorf("Error uploading script: %s", e)
-			}
-
-			cmd = &packersdk.RemoteCmd{Command: command}
-			return cmd.RunWithUi(ctx, comm, ui)
-		})
-		if e != nil {
-			return e
-		}
-
-		// Close the original file since we copied it
-		f.Close()
-
-		// Record every other uploaded script file so we can clean it up later
-		uploadedScripts = append(uploadedScripts, p.config.RemotePath)
-
-		log.Printf("%s returned with exit code %d", p.config.RemotePath, cmd.ExitStatus())
-		if e := p.config.ValidExitCode(cmd.ExitStatus()); e != nil {
-			return e
-		}
-	}
+	ui.Say(fmt.Sprintf("%s", p.config.ExecuteCommand))
 
 	return nil
 }
