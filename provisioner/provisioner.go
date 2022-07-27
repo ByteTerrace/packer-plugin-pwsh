@@ -170,8 +170,6 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 
 		defer scriptFileHandle.Close()
 
-		var cmd *packersdk.RemoteCmd
-
 		ui.Say("Attempting Run...")
 
 		e = retry.Config{StartTimeout: (3 * time.Minute)}.Run(
@@ -180,24 +178,17 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 				comm,
 				command,
 				config,
-				cmd,
 				scriptFileHandle,
 				&scriptFileInfo,
 				ui,
 			),
 		)
 
-		ui.Say(fmt.Sprintf("Exited with code: %d.", 0))
-
 		if e != nil {
 			return e
 		}
 
 		scriptFileHandle.Close()
-
-		if e = config.ValidExitCode(cmd.ExitStatus()); nil != e {
-			return e
-		}
 	}
 
 	return nil
@@ -232,7 +223,7 @@ func getInlineScriptFilePath(config Config) (string, error) {
 
 	return scriptFileHandle.Name(), nil
 }
-func getUploadAndExecuteScriptFunc(communicator packersdk.Communicator, command string, config Config, remoteCmd *packersdk.RemoteCmd, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
+func getUploadAndExecuteScriptFunc(communicator packersdk.Communicator, command string, config Config, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
 	return func(context context.Context) error {
 		if _, e := scriptFileHandle.Seek(0, 0); nil != e {
 			return e
@@ -244,10 +235,20 @@ func getUploadAndExecuteScriptFunc(communicator packersdk.Communicator, command 
 			return fmt.Errorf("Error uploading script: %s.", e)
 		}
 
-		remoteCmd = &packersdk.RemoteCmd{Command: command}
+		remoteCmd := &packersdk.RemoteCmd{Command: command}
 
 		ui.Say("Attempting RunWithUi...")
 
-		return remoteCmd.RunWithUi(context, communicator, ui)
+		if e := remoteCmd.RunWithUi(context, communicator, ui); nil != e {
+			return e
+		}
+
+		ui.Say(fmt.Sprintf("Exited with code: %d.", remoteCmd.ExitStatus()))
+
+		if e := config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
+			return e
+		}
+
+		return nil
 	}
 }
