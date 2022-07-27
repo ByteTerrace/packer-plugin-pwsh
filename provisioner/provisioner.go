@@ -65,13 +65,19 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		return e
 	}
 
-	var defaultElevatedEnvVarFormat = ""
-	var defaultEnvVarFormat = ""
-	var defaultExecuteCommand = ""
-	var defaultRemoteEnvVarPathFormat = ""
-	var defaultRemotePathFormat = ""
+	var defaultElevatedEnvVarFormat string
+	var defaultEnvVarFormat string
+	var defaultExecuteCommand string
+	var defaultRemoteEnvVarPathFormat string
+	var defaultRemotePathFormat string
 
 	switch runtime.GOOS {
+	/*case "linux":
+	defaultElevatedEnvVarFormat = ""
+	defaultEnvVarFormat = ""
+	defaultExecuteCommand = ""
+	defaultRemoteEnvVarPathFormat = ""
+	defaultRemotePathFormat = ""*/
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
@@ -131,7 +137,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	p.generatedData = generatedData
 
 	config := p.config
-	inlineScriptFilePath, e := getInlineScriptFilePath(config)
+	inlineScriptFilePath, e := p.getInlineScriptFilePath()
 	scripts := make([]string, len(config.Scripts))
 
 	if nil != e {
@@ -158,10 +164,8 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-	e = uploadAndExecuteScripts(
+	e = p.uploadAndExecuteScripts(
 		command,
-		communicator,
-		config,
 		ctx,
 		scripts,
 		ui,
@@ -174,10 +178,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	return nil
 }
 
-func getInlineScriptFilePath(config Config) (string, error) {
+func (p *Provisioner) getInlineScriptFilePath() (string, error) {
 	const preparationErrorTemplate = "Error preparing PowerShell script: %s."
 
-	if (nil == config.Inline) || (0 == len(config.Inline)) {
+	if (nil == p.config.Inline) || (0 == len(p.config.Inline)) {
 		return "", nil
 	}
 
@@ -191,7 +195,7 @@ func getInlineScriptFilePath(config Config) (string, error) {
 
 	writer := bufio.NewWriter(scriptFileHandle)
 
-	for _, command := range config.Inline {
+	for _, command := range p.config.Inline {
 		if _, e := writer.WriteString(command + "\n"); nil != e {
 			return "", fmt.Errorf(preparationErrorTemplate, e)
 		}
@@ -203,32 +207,32 @@ func getInlineScriptFilePath(config Config) (string, error) {
 
 	return scriptFileHandle.Name(), nil
 }
-func getUploadAndExecuteScriptFunc(command string, communicator packersdk.Communicator, config Config, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
+func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
 	return func(context context.Context) error {
 		if _, e := scriptFileHandle.Seek(0, 0); nil != e {
 			return e
 		}
 
-		if e := communicator.Upload(config.RemotePath, scriptFileHandle, scriptFileInfo); nil != e {
+		if e := p.communicator.Upload(p.config.RemotePath, scriptFileHandle, scriptFileInfo); nil != e {
 			return fmt.Errorf("Error uploading script: %s.", e)
 		}
 
 		remoteCmd := &packersdk.RemoteCmd{Command: command}
 
-		if e := remoteCmd.RunWithUi(context, communicator, ui); nil != e {
+		if e := remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
 			return e
 		}
 
 		ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", remoteCmd.ExitStatus()))
 
-		if e := config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
+		if e := p.config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
 			return e
 		}
 
 		return nil
 	}
 }
-func uploadAndExecuteScripts(command string, communicator packersdk.Communicator, config Config, context context.Context, scripts []string, ui packersdk.Ui) error {
+func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, scripts []string, ui packersdk.Ui) error {
 	for _, path := range scripts {
 		scriptFileInfo, e := os.Stat(path)
 
@@ -238,8 +242,8 @@ func uploadAndExecuteScripts(command string, communicator packersdk.Communicator
 
 		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", path))
 
-		if os.IsPathSeparator(config.RemotePath[len(config.RemotePath)-1]) {
-			config.RemotePath += filepath.Base(scriptFileInfo.Name())
+		if os.IsPathSeparator(p.config.RemotePath[len(p.config.RemotePath)-1]) {
+			p.config.RemotePath += filepath.Base(scriptFileInfo.Name())
 		}
 
 		scriptFileHandle, e := os.Open(path)
@@ -255,10 +259,8 @@ func uploadAndExecuteScripts(command string, communicator packersdk.Communicator
 			Tries:        defaultTries,
 		}.Run(
 			context,
-			getUploadAndExecuteScriptFunc(
+			p.getUploadAndExecuteScriptFunc(
 				command,
-				communicator,
-				config,
 				scriptFileHandle,
 				&scriptFileInfo,
 				ui,
