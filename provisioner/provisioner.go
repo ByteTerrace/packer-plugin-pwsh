@@ -306,9 +306,15 @@ func (p *Provisioner) updatePowerShellInstallation(command string, context conte
 	writer := bufio.NewWriter(scriptFileHandle)
 
 	updatePowerShellCommand := "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
-	updatePowerShellCommand += "[Net.ServicePointManager]::SecurityProtocol = [Net:SecurityProtocolType]::Tls12;\n"
-	updatePowerShellCommand += "Invoke-WebRequest -OutFile 'C:/Windows/Temp/PowerShell-Installer.msi' -Uri 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi';\n"
-	updatePowerShellCommand += "exit (Start-Process -ArgumentList @('/i', 'C:/Windows/Temp/PowerShell-Installer.msi', '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode);\n"
+	updatePowerShellCommand += "$exitCode = -1;\n"
+	updatePowerShellCommand += "try {\n"
+	updatePowerShellCommand += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+	updatePowerShellCommand += "    Invoke-WebRequest -OutFile 'C:/Windows/Temp/PowerShell-Installer.msi' -Uri 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi';\n"
+	updatePowerShellCommand += "    $exitCode = (Start-Process -ArgumentList @('/i', 'C:/Windows/Temp/PowerShell-Installer.msi', '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
+	updatePowerShellCommand += "}\n"
+	updatePowerShellCommand += "finally {\n"
+	updatePowerShellCommand += "    exit $exitCode;\n"
+	updatePowerShellCommand += "}\n"
 
 	if _, e = writer.WriteString(updatePowerShellCommand); nil != e {
 		return fmt.Errorf(preparationErrorTemplate, e)
@@ -320,14 +326,12 @@ func (p *Provisioner) updatePowerShellInstallation(command string, context conte
 
 	scriptFileHandle.Close()
 
-	e = p.uploadAndExecuteScripts(
+	if e = p.uploadAndExecuteScripts(
 		command,
 		context,
 		([]string{scriptFileHandle.Name()}),
 		ui,
-	)
-
-	if nil != e {
+	); nil != e {
 		return e
 	}
 
