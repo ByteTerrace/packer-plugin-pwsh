@@ -7,13 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"sort"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
-	"github.com/hashicorp/packer-plugin-sdk/multistep/commonsteps"
 	"github.com/hashicorp/packer-plugin-sdk/retry"
 	"github.com/hashicorp/packer-plugin-sdk/shell"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
@@ -81,10 +80,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.ExecuteCommand {
-		p.config.ExecuteCommand = fmt.Sprintf(
-			`FOR /F \"tokens=* USEBACKQ\" %%F IN (`+"`where pwsh /R \"%%PROGRAMFILES%%\\PowerShell\" ^2^>nul ^|^| where powershell`"+`) DO (\"%%F\" %s);`,
-			fmt.Sprintf(`-ExecutionPolicy "Bypass" "%s"`, `. {{.Vars}}; &'{{.Path}}'; exit $LastExitCode }`),
-		)
+		p.config.ExecuteCommand = `FOR /F \"tokens=* USEBACKQ\" %%F IN (` + "`where pwsh /R \"%%PROGRAMFILES%%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO (\"%%F\" -ExecutionPolicy "Bypass" "& {&'{{.Path}}'; exit $LastExitCode; });`
 	}
 
 	if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
@@ -92,7 +88,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.RemoteEnvVarPath {
-		p.config.RemoteEnvVarPath = fmt.Sprintf(`c:/Windows/Temp/packer-ps-env-vars-%s.ps1`, uuid.TimeOrderedUUID())
+		p.config.RemoteEnvVarPath = fmt.Sprintf(`c:/Windows/Temp/packer-pwsh-variables-%s.ps1`, uuid.TimeOrderedUUID())
+	}
+
+	if "" == p.config.RemotePath {
+		p.config.RemotePath = fmt.Sprintf(`c:/Windows/Temp/packer-pwsh-script-%s.ps1`, uuid.TimeOrderedUUID())
 	}
 
 	if nil == p.config.Scripts {
@@ -119,149 +119,126 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 	p.communicator = comm
 	p.generatedData = generatedData
 
-	ui.Say(fmt.Sprintf("%s", p.config.ExecuteCommand))
+	config := p.config
+	inlineScriptFilePath, e := getInlineScriptFilePath(config)
+	scripts := make([]string, len(config.Scripts))
+
+	if nil != e {
+		return e
+	}
+
+	if "" != inlineScriptFilePath {
+		defer os.Remove(inlineScriptFilePath)
+
+		scripts = append(scripts, inlineScriptFilePath)
+	}
+
+	copy(scripts, config.Scripts)
+
+	contextData := p.generatedData
+	contextData["Path"] = config.RemotePath
+	contextData["Vars"] = config.RemoteEnvVarPath
+	config.ctx.Data = contextData
+
+	command, e := interpolate.Render(config.ExecuteCommand, &config.ctx)
+
+	if nil != e {
+		return e
+	}
+
+	ui.Say(command)
+
+	for _, path := range scripts {
+		scriptFileInfo, e := os.Stat(path)
+
+		if nil != e {
+			return fmt.Errorf("Error stating PowerShell script: %s.", e)
+		}
+
+		ui.Say(path)
+
+		if os.IsPathSeparator(config.RemotePath[len(config.RemotePath)-1]) {
+			config.RemotePath += filepath.Base(scriptFileInfo.Name())
+		}
+
+		scriptFileHandle, e := os.Open(path)
+
+		if e != nil {
+			return fmt.Errorf("Error opening PowerShell script: %s.", e)
+		}
+
+		defer scriptFileHandle.Close()
+
+		var cmd *packersdk.RemoteCmd
+
+		e = retry.Config{StartTimeout: (3 * time.Minute)}.Run(
+			ctx,
+			getUploadAndExecuteScriptFunc(
+				comm,
+				command,
+				config,
+				cmd,
+				scriptFileHandle,
+				&scriptFileInfo,
+				ui,
+			),
+		)
+
+		if e != nil {
+			return e
+		}
+
+		scriptFileHandle.Close()
+
+		if e := p.config.ValidExitCode(cmd.ExitStatus()); nil != e {
+			return e
+		}
+	}
 
 	return nil
 }
 
-func (p *Provisioner) createCommandTextNonPrivileged() (command string, e error) {
-	e = p.prepareEnvVars(false)
+func getInlineScriptFilePath(config Config) (string, error) {
+	const preparationErrorTemplate = "Error preparing PowerShell script: %s."
+
+	if (nil == config.Inline) || (0 == len(config.Inline)) {
+		return "", nil
+	}
+
+	scriptFileHandle, e := tmp.File("pwsh-provisioner")
 
 	if nil != e {
 		return "", e
 	}
 
-	ctxData := p.generatedData
-	ctxData["Path"] = p.config.RemotePath
-	ctxData["Vars"] = p.config.RemoteEnvVarPath
-	p.config.ctx.Data = ctxData
+	defer scriptFileHandle.Close()
 
-	command, e = interpolate.Render(p.config.ExecuteCommand, &p.config.ctx)
+	writer := bufio.NewWriter(scriptFileHandle)
 
-	if nil != e {
-		return "", fmt.Errorf("Error processing command: %s.", e)
+	for _, command := range config.Inline {
+		if _, e := writer.WriteString(command + "\n"); nil != e {
+			return "", fmt.Errorf(preparationErrorTemplate, e)
+		}
 	}
 
-	return command, nil
+	if e := writer.Flush(); nil != e {
+		return "", fmt.Errorf(preparationErrorTemplate, e)
+	}
+
+	return scriptFileHandle.Name(), nil
 }
-func (p *Provisioner) createFlattenedEnvVars(elevated bool) (flattened string) {
-	environmentVariables := make(map[string]string)
-	flattened = ""
-
-	environmentVariables["PACKER_BUILD_NAME"] = p.config.PackerBuildName
-	environmentVariables["PACKER_BUILDER_TYPE"] = p.config.PackerBuilderType
-
-	httpAddress := p.generatedData["PackerHTTPAddr"]
-	httpIp := p.generatedData["PackerHTTPIP"]
-	httpPort := p.generatedData["PackerHTTPPort"]
-
-	if httpAddress != nil && httpAddress != commonsteps.HttpAddrNotImplemented {
-		environmentVariables["PACKER_HTTP_ADDR"] = httpAddress.(string)
-	}
-
-	if httpIp != nil && httpIp != commonsteps.HttpIPNotImplemented {
-		environmentVariables["PACKER_HTTP_IP"] = httpIp.(string)
-	}
-
-	if httpPort != nil && httpPort != commonsteps.HttpPortNotImplemented {
-		environmentVariables["PACKER_HTTP_PORT"] = httpPort.(string)
-	}
-
-	// interpolate environment variables
-	p.config.ctx.Data = p.generatedData
-
-	// split vars into key/value components
-	for _, envVar := range p.config.Vars {
-		envVar, e := interpolate.Render(envVar, &p.config.ctx)
-		if e != nil {
-			return
-		}
-		keyValue := strings.SplitN(envVar, "=", 2)
-		// escape chars special to PS in each env var value
-		escapedEnvVarValue := psEscape.Replace(keyValue[1])
-		if escapedEnvVarValue != keyValue[1] {
-			log.Printf("Environment variable %s converted to %s after escaping chars special to PS.", keyValue[1], escapedEnvVarValue)
-		}
-		environmentVariables[keyValue[0]] = escapedEnvVarValue
-	}
-
-	for k, v := range p.config.Env {
-		envVarName, e := interpolate.Render(k, &p.config.ctx)
-
-		if e != nil {
-			return
+func getUploadAndExecuteScriptFunc(communicator packersdk.Communicator, command string, config Config, remoteCmd *packersdk.RemoteCmd, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
+	return func(context context.Context) error {
+		if _, e := scriptFileHandle.Seek(0, 0); nil != e {
+			return e
 		}
 
-		envVarValue, e := interpolate.Render(v, &p.config.ctx)
-
-		if e != nil {
-			return
+		if e := communicator.Upload(config.RemotePath, scriptFileHandle, scriptFileInfo); nil != e {
+			return fmt.Errorf("Error uploading script: %s.", e)
 		}
 
-		environmentVariables[envVarName] = psEscape.Replace(envVarValue)
+		remoteCmd = &packersdk.RemoteCmd{Command: command}
+
+		return remoteCmd.RunWithUi(context, communicator, ui)
 	}
-
-	// create a list of env var keys in sorted order
-	var keys []string
-	for k := range environmentVariables {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	format := p.config.EnvVarFormat
-
-	if elevated {
-		format = p.config.ElevatedEnvVarFormat
-	}
-
-	// re-assemble vars using OS specific format pattern and flatten
-	for _, key := range keys {
-		flattened += fmt.Sprintf(format, key, environmentVariables[key])
-	}
-	return
-}
-func (p *Provisioner) prepareEnvVars(elevated bool) (e error) {
-	e = p.uploadEnvVars(p.createFlattenedEnvVars(elevated))
-
-	if nil != e {
-		return e
-	}
-
-	return
-}
-func (p *Provisioner) uploadEnvVars(flattenedEnvVars string) (e error) {
-	ctx := context.TODO()
-	envVarReader := strings.NewReader(flattenedEnvVars)
-
-	log.Printf("Uploading environment variables to %s.", p.config.RemoteEnvVarPath)
-
-	e = retry.Config{StartTimeout: startTimeout}.Run(ctx, func(context.Context) error {
-		if e := p.communicator.Upload(p.config.RemoteEnvVarPath, envVarReader, nil); e != nil {
-			return fmt.Errorf("Error uploading script containing environment variables: %s.", e)
-		}
-
-		return e
-	})
-
-	return
-}
-
-func extractScript(p *Provisioner) (string, error) {
-	temp, e := tmp.File("pwsh-provisioner")
-	if e != nil {
-		return "", e
-	}
-	defer temp.Close()
-	writer := bufio.NewWriter(temp)
-	for _, command := range p.config.Inline {
-		log.Printf("Found command: %s", command)
-		if _, e := writer.WriteString(command + "\n"); e != nil {
-			return "", fmt.Errorf("Error preparing powershell script: %s.", e)
-		}
-	}
-
-	if e := writer.Flush(); e != nil {
-		return "", fmt.Errorf("Error preparing powershell script: %s.", e)
-	}
-
-	return temp.Name(), nil
 }
