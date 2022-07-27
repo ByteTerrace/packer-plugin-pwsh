@@ -24,7 +24,8 @@ import (
 )
 
 const (
-	startTimeout = (7 * time.Minute)
+	defaultStartTimeout = (7 * time.Minute)
+	defaultTries        = 1
 )
 
 var psEscape = strings.NewReplacer(
@@ -81,7 +82,6 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 	if "" == p.config.ExecuteCommand {
 		p.config.ExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
-		//p.config.ExecuteCommand = `powershell -ExecutionPolicy "Bypass" "&'{{.Path}}'; exit $LastExitCode;"`
 	}
 
 	if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
@@ -149,47 +149,17 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-	for _, path := range scripts {
-		scriptFileInfo, e := os.Stat(path)
+	e = uploadAndExecuteScripts(
+		command,
+		communicator,
+		config,
+		ctx,
+		scripts,
+		ui,
+	)
 
-		if nil != e {
-			return fmt.Errorf("Error stating PowerShell script: %s.", e)
-		}
-
-		ui.Say(fmt.Sprintf(`Provisioning with pwsh; script path: %s`, path))
-
-		if os.IsPathSeparator(config.RemotePath[len(config.RemotePath)-1]) {
-			config.RemotePath += filepath.Base(scriptFileInfo.Name())
-		}
-
-		scriptFileHandle, e := os.Open(path)
-
-		if nil != e {
-			return fmt.Errorf("Error opening PowerShell script: %s.", e)
-		}
-
-		defer scriptFileHandle.Close()
-
-		e = retry.Config{
-			StartTimeout: (23 * time.Minute),
-			Tries:        3,
-		}.Run(
-			ctx,
-			getUploadAndExecuteScriptFunc(
-				command,
-				communicator,
-				config,
-				scriptFileHandle,
-				&scriptFileInfo,
-				ui,
-			),
-		)
-
-		if e != nil {
-			return e
-		}
-
-		scriptFileHandle.Close()
+	if nil != e {
+		return e
 	}
 
 	return nil
@@ -240,7 +210,7 @@ func getUploadAndExecuteScriptFunc(command string, communicator packersdk.Commun
 			return e
 		}
 
-		ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d.", remoteCmd.ExitStatus()))
+		ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", remoteCmd.ExitStatus()))
 
 		if e := config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
 			return e
@@ -248,4 +218,50 @@ func getUploadAndExecuteScriptFunc(command string, communicator packersdk.Commun
 
 		return nil
 	}
+}
+func uploadAndExecuteScripts(command string, communicator packersdk.Communicator, config Config, context context.Context, scripts []string, ui packersdk.Ui) error {
+	for _, path := range scripts {
+		scriptFileInfo, e := os.Stat(path)
+
+		if nil != e {
+			return fmt.Errorf("Error stating PowerShell script: %s.", e)
+		}
+
+		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", path))
+
+		if os.IsPathSeparator(config.RemotePath[len(config.RemotePath)-1]) {
+			config.RemotePath += filepath.Base(scriptFileInfo.Name())
+		}
+
+		scriptFileHandle, e := os.Open(path)
+
+		if nil != e {
+			return fmt.Errorf("Error opening PowerShell script: %s.", e)
+		}
+
+		defer scriptFileHandle.Close()
+
+		e = retry.Config{
+			StartTimeout: defaultStartTimeout,
+			Tries:        defaultTries,
+		}.Run(
+			context,
+			getUploadAndExecuteScriptFunc(
+				command,
+				communicator,
+				config,
+				scriptFileHandle,
+				&scriptFileInfo,
+				ui,
+			),
+		)
+
+		if e != nil {
+			return e
+		}
+
+		scriptFileHandle.Close()
+	}
+
+	return nil
 }
