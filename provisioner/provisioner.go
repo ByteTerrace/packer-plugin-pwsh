@@ -80,7 +80,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.ExecuteCommand {
-		p.config.ExecuteCommand = `FOR /F \"tokens=* USEBACKQ\" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO (\"%F\" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
+		p.config.ExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
 		//p.config.ExecuteCommand = `powershell -ExecutionPolicy "Bypass" "&'{{.Path}}'; exit $LastExitCode;"`
 	}
 
