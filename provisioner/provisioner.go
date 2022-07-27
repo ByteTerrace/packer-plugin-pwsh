@@ -80,7 +80,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.ExecuteCommand {
-		p.config.ExecuteCommand = `FOR /F \"tokens=* USEBACKQ\" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO (\"%F\" -ExecutionPolicy "Bypass" "& {&'{{.Path}}'; exit $LastExitCode; });`
+		//p.config.ExecuteCommand = `FOR /F \"tokens=* USEBACKQ\" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO (\"%F\" -ExecutionPolicy "Bypass" "&'{{.Path}}'; exit $LastExitCode;)`
+		p.config.ExecuteCommand = `powershell -ExecutionPolicy "Bypass" "&'{{.Path}}'; exit $LastExitCode;"`
 	}
 
 	if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
@@ -186,13 +187,13 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 			),
 		)
 
+		ui.Say(fmt.Sprintf("Exited with code: %d.", cmd.ExitStatus()))
+
 		if e != nil {
 			return e
 		}
 
 		scriptFileHandle.Close()
-
-		ui.Say(fmt.Sprintf("Exited with code: %d.", cmd.ExitStatus()))
 
 		if e = config.ValidExitCode(cmd.ExitStatus()); nil != e {
 			return e
