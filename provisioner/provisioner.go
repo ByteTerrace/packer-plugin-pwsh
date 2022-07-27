@@ -80,8 +80,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.ExecuteCommand {
-		//p.config.ExecuteCommand = `FOR /F \"tokens=* USEBACKQ\" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO (\"%F\" -ExecutionPolicy "Bypass" "&'{{.Path}}'; exit $LastExitCode;)`
-		p.config.ExecuteCommand = `powershell -ExecutionPolicy "Bypass" "&'{{.Path}}'; exit $LastExitCode;"`
+		p.config.ExecuteCommand = `FOR /F \"tokens=* USEBACKQ\" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO (\"%F\" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
+		//p.config.ExecuteCommand = `powershell -ExecutionPolicy "Bypass" "&'{{.Path}}'; exit $LastExitCode;"`
 	}
 
 	if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
@@ -116,8 +116,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 	return nil
 }
-func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packersdk.Communicator, generatedData map[string]interface{}) error {
-	p.communicator = comm
+func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicator packersdk.Communicator, generatedData map[string]interface{}) error {
+	p.communicator = communicator
 	p.generatedData = generatedData
 
 	config := p.config
@@ -147,7 +147,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 		return e
 	}
 
-	ui.Say(command)
+	ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
 	for _, path := range scripts {
 		scriptFileInfo, e := os.Stat(path)
@@ -156,7 +156,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 			return fmt.Errorf("Error stating PowerShell script: %s.", e)
 		}
 
-		ui.Say(path)
+		ui.Say(fmt.Sprintf(`Provisioning with pwsh; script path: %s`, path))
 
 		if os.IsPathSeparator(config.RemotePath[len(config.RemotePath)-1]) {
 			config.RemotePath += filepath.Base(scriptFileInfo.Name())
@@ -170,13 +170,14 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 
 		defer scriptFileHandle.Close()
 
-		ui.Say("Attempting Run...")
-
-		e = retry.Config{StartTimeout: (3 * time.Minute)}.Run(
+		e = retry.Config{
+			StartTimeout: (23 * time.Minute),
+			Tries:        3,
+		}.Run(
 			ctx,
 			getUploadAndExecuteScriptFunc(
-				comm,
 				command,
+				communicator,
 				config,
 				scriptFileHandle,
 				&scriptFileInfo,
@@ -223,13 +224,11 @@ func getInlineScriptFilePath(config Config) (string, error) {
 
 	return scriptFileHandle.Name(), nil
 }
-func getUploadAndExecuteScriptFunc(communicator packersdk.Communicator, command string, config Config, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
+func getUploadAndExecuteScriptFunc(command string, communicator packersdk.Communicator, config Config, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
 	return func(context context.Context) error {
 		if _, e := scriptFileHandle.Seek(0, 0); nil != e {
 			return e
 		}
-
-		ui.Say("Attempting to upload script...")
 
 		if e := communicator.Upload(config.RemotePath, scriptFileHandle, scriptFileInfo); nil != e {
 			return fmt.Errorf("Error uploading script: %s.", e)
@@ -237,13 +236,11 @@ func getUploadAndExecuteScriptFunc(communicator packersdk.Communicator, command 
 
 		remoteCmd := &packersdk.RemoteCmd{Command: command}
 
-		ui.Say("Attempting RunWithUi...")
-
 		if e := remoteCmd.RunWithUi(context, communicator, ui); nil != e {
 			return e
 		}
 
-		ui.Say(fmt.Sprintf("Exited with code: %d.", remoteCmd.ExitStatus()))
+		ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d.", remoteCmd.ExitStatus()))
 
 		if e := config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
 			return e
