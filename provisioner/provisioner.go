@@ -72,12 +72,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultRemotePathFormat string
 
 	switch runtime.GOOS {
-	/*case "linux":
-	defaultElevatedEnvVarFormat = ""
-	defaultEnvVarFormat = ""
-	defaultExecuteCommand = ""
-	defaultRemoteEnvVarPathFormat = ""
-	defaultRemotePathFormat = ""*/
+	case "linux":
+		defaultElevatedEnvVarFormat = "%s='%s'"
+		defaultEnvVarFormat = "%s='%s'"
+		defaultExecuteCommand = `pwsh -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass"`
+		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
+		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
@@ -164,6 +164,16 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
+	e = p.updatePowerShellInstallation(
+		command,
+		ctx,
+		ui,
+	)
+
+	if nil != e {
+		return e
+	}
+
 	e = p.uploadAndExecuteScripts(
 		command,
 		ctx,
@@ -204,6 +214,8 @@ func (p *Provisioner) getInlineScriptFilePath() (string, error) {
 	if e := writer.Flush(); nil != e {
 		return "", fmt.Errorf(preparationErrorTemplate, e)
 	}
+
+	scriptFileHandle.Close()
 
 	return scriptFileHandle.Name(), nil
 }
@@ -273,6 +285,47 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 
 		scriptFileHandle.Close()
 	}
+
+	return nil
+}
+func (p *Provisioner) updatePowerShellInstallation(command string, context context.Context, ui packersdk.Ui) error {
+	const preparationErrorTemplate = "Error preparing PowerShell script: %s."
+
+	if (nil == p.config.Inline) || (0 == len(p.config.Inline)) {
+		return nil
+	}
+
+	scriptFileHandle, e := tmp.File("pwsh-provisioner")
+
+	if nil != e {
+		return e
+	}
+
+	defer scriptFileHandle.Close()
+
+	writer := bufio.NewWriter(scriptFileHandle)
+
+	updatePowerShellCommand := "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
+	updatePowerShellCommand += "[Net.ServicePointManager]::SecurityProtocol = [Net:SecurityProtocolType]::Tls12;\n"
+	updatePowerShellCommand += "Invoke-WebRequest -OutFile 'C:/Windows/Temp/PowerShell-Installer.msi' -Uri 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi';\n"
+	updatePowerShellCommand += "exit (Start-Process -ArgumentList @('/i', 'C:/Windows/Temp/PowerShell-Installer.msi', '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode);\n"
+
+	if _, e = writer.WriteString(updatePowerShellCommand); nil != e {
+		return fmt.Errorf(preparationErrorTemplate, e)
+	}
+
+	if e = writer.Flush(); nil != e {
+		return fmt.Errorf(preparationErrorTemplate, e)
+	}
+
+	scriptFileHandle.Close()
+
+	e = p.uploadAndExecuteScripts(
+		command,
+		context,
+		([]string{scriptFileHandle.Name()}),
+		ui,
+	)
 
 	return nil
 }
