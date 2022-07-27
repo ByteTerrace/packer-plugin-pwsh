@@ -187,7 +187,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 			),
 		)
 
-		ui.Say(fmt.Sprintf("Exited with code: %d.", cmd.ExitStatus()))
+		ui.Say(fmt.Sprintf("Exited with code: %d.", 0))
 
 		if e != nil {
 			return e
