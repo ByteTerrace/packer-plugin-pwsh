@@ -192,7 +192,9 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 
 		scriptFileHandle.Close()
 
-		if e = p.config.ValidExitCode(cmd.ExitStatus()); nil != e {
+		ui.Say(fmt.Sprintf("Exited with code: %d.", cmd.ExitStatus()))
+
+		if e = config.ValidExitCode(cmd.ExitStatus()); nil != e {
 			return e
 		}
 	}
