@@ -163,13 +163,15 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 
 		scriptFileHandle, e := os.Open(path)
 
-		if e != nil {
+		if nil != e {
 			return fmt.Errorf("Error opening PowerShell script: %s.", e)
 		}
 
 		defer scriptFileHandle.Close()
 
 		var cmd *packersdk.RemoteCmd
+
+		ui.Say("Attempting Run...")
 
 		e = retry.Config{StartTimeout: (3 * time.Minute)}.Run(
 			ctx,
@@ -190,7 +192,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, comm packe
 
 		scriptFileHandle.Close()
 
-		if e := p.config.ValidExitCode(cmd.ExitStatus()); nil != e {
+		if e = p.config.ValidExitCode(cmd.ExitStatus()); nil != e {
 			return e
 		}
 	}
@@ -233,11 +235,15 @@ func getUploadAndExecuteScriptFunc(communicator packersdk.Communicator, command 
 			return e
 		}
 
+		ui.Say("Attempting to upload script...")
+
 		if e := communicator.Upload(config.RemotePath, scriptFileHandle, scriptFileInfo); nil != e {
 			return fmt.Errorf("Error uploading script: %s.", e)
 		}
 
 		remoteCmd = &packersdk.RemoteCmd{Command: command}
+
+		ui.Say("Attempting RunWithUi...")
 
 		return remoteCmd.RunWithUi(context, communicator, ui)
 	}
