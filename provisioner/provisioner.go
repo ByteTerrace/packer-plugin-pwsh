@@ -121,7 +121,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScriptFormat += "}\n"
 		defaultRebootCompleteCommand = `shutdown /r /f /t 0 /c "packer reboot test"`
 		defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
-		defaultRebootValidateCommand = ""
+		defaultRebootValidateCommand = `powershell -Command "exit 0;" -ExecutionPolicy "Bypass"`
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
 		defaultRemotePwshUpdatePathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
@@ -301,7 +301,6 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 	} else {
 		for {
 			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
-
 			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
 			exitCode = remoteCmd.ExitStatus()
 
@@ -318,6 +317,23 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 		}
 
 		ui.Say(fmt.Sprintf("Completed machine reboot; exit code: %d", exitCode))
+
+		remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootValidateCommand}
+
+		ui.Say(fmt.Sprintf("Validating machine reboot; command: %s", p.config.RebootValidateCommand))
+
+		for {
+			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
+			exitCode = remoteCmd.ExitStatus()
+
+			if 0 == exitCode {
+				break
+			} else {
+				time.Sleep(13 * time.Second)
+			}
+		}
+
+		ui.Say(fmt.Sprintf("Validated machine reboot; exit code: %d", exitCode))
 
 		return nil
 	}
@@ -383,8 +399,6 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 					if true {
 						if e = p.rebootMachine(context, ui); nil != e {
 							return e
-						} else {
-							time.Sleep(13 * time.Second)
 						}
 					}
 				}
