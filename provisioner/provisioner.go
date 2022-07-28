@@ -304,15 +304,31 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
 			exitCode = remoteCmd.ExitStatus()
 
-			if (nil != e) || (1 == exitCode) { // encountered error or SSH
+			if nil != e {
 				break
-			} else if 0 == exitCode { // success; cancel pending shutdown
-				remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
-				remoteCmd.RunWithUi(ctx, p.communicator, ui)
+			} else {
+				switch exitCode {
+				// success (WinRM)
+				case 0:
+					remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
+					remoteCmd.RunWithUi(ctx, p.communicator, ui)
+
+					break
+				// success (SSH)
+				case 1:
+					break
+				// waiting on pending reboot
+				case 1115:
+				case 1190:
+				case 1117:
+					time.Sleep(13 * time.Second)
+					break
+				// unhandled exit code
+				default:
+					return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
+				}
 
 				break
-			} else if (1115 == exitCode) || (1190 == exitCode) || (1717 == exitCode) { // waiting on pending reboot
-				time.Sleep(13 * time.Second)
 			}
 		}
 
@@ -326,15 +342,18 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
 			exitCode = remoteCmd.ExitStatus()
 
-			if 0 == exitCode {
-				break
+			if nil != e {
+				return e
 			} else {
-				time.Sleep(13 * time.Second)
+				if 0 == exitCode {
+					break
+				} else {
+					time.Sleep(13 * time.Second)
+				}
 			}
 		}
 
 		ui.Say(fmt.Sprintf("Validated machine reboot; exit code: %d", exitCode))
-
 		return nil
 	}
 }
