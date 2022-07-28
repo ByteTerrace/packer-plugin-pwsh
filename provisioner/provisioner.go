@@ -179,10 +179,11 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
+	configuration := p.config
 	contextData := generatedData
-	inlineScriptFilePath, e := p.getInlineScriptFilePath(p.config.Inline)
-	remotePath := p.config.RemotePath
-	scripts := make([]string, len(p.config.Scripts))
+	inlineScriptFilePath, e := p.getInlineScriptFilePath(configuration.Inline)
+	remotePath := configuration.RemotePath
+	scripts := make([]string, len(configuration.Scripts))
 
 	if nil != e {
 		return e
@@ -194,18 +195,18 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 		scripts = append(scripts, inlineScriptFilePath)
 	}
 
-	copy(scripts, p.config.Scripts)
+	copy(scripts, configuration.Scripts)
 
-	contextData["Path"] = p.config.RemotePath
-	p.config.RemotePath = p.config.RemotePwshUpdatePath
+	if "" != configuration.PwshMsiUri {
+		contextData["Path"] = configuration.RemotePwshUpdatePath
+		configuration.RemotePath = configuration.RemotePwshUpdatePath
 
-	if "" != p.config.PwshMsiUri {
-		if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
+		if command, e := interpolate.Render(configuration.PwshUpdateCommand, &configuration.ctx); nil != e {
 			return e
 		} else {
 			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
 
-			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshUpdateScript}); nil != e {
+			if updateScriptPath, e := p.getInlineScriptFilePath([]string{configuration.PwshUpdateScript}); nil != e {
 				if e = p.uploadAndExecuteScripts(
 					command,
 					ctx,
@@ -218,10 +219,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 		}
 	}
 
-	contextData["Path"] = p.config.RemotePath
-	p.config.RemotePath = remotePath
+	contextData["Path"] = configuration.RemotePath
+	configuration.RemotePath = remotePath
 
-	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
+	if command, e := interpolate.Render(configuration.ExecuteCommand, &configuration.ctx); nil != e {
 		return e
 	} else {
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
