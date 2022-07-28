@@ -186,8 +186,6 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 		return e
 	}
 
-	p.config.ctx.Data = contextData
-
 	if "" != inlineScriptFilePath {
 		defer os.Remove(inlineScriptFilePath)
 
@@ -196,8 +194,9 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	copy(scripts, p.config.Scripts)
 
-	contextData["Path"] = p.config.RemotePath
+	contextData["Path"] = p.config.RemotePwshUpdatePath
 	contextData["Vars"] = p.config.RemoteEnvVarPath
+	p.config.ctx.Data = contextData
 
 	if "" != p.config.PwshMsiUri {
 		if e = p.updatePowerShellInstallation(ctx, ui); nil != e {
@@ -205,7 +204,8 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 		}
 	}
 
-	contextData["Path"] = p.config.RemotePwshUpdatePath
+	contextData["Path"] = p.config.RemotePath
+	p.config.ctx.Data = contextData
 
 	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
@@ -298,12 +298,6 @@ func (p *Provisioner) updatePowerShellInstallation(context context.Context, ui p
 
 	writer := bufio.NewWriter(scriptFileHandle)
 
-	command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx)
-
-	if nil != e {
-		return e
-	}
-
 	if _, e = writer.WriteString(p.config.PwshUpdateScript); nil != e {
 		return fmt.Errorf(preparationErrorTemplate, e)
 	}
@@ -314,13 +308,19 @@ func (p *Provisioner) updatePowerShellInstallation(context context.Context, ui p
 
 	scriptFileHandle.Close()
 
-	if e = p.uploadAndExecuteScripts(
-		command,
-		context,
-		([]string{scriptFileHandle.Name()}),
-		ui,
-	); nil != e {
+	if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
 		return e
+	} else {
+		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
+
+		if e = p.uploadAndExecuteScripts(
+			command,
+			context,
+			([]string{scriptFileHandle.Name()}),
+			ui,
+		); nil != e {
+			return e
+		}
 	}
 
 	return nil
