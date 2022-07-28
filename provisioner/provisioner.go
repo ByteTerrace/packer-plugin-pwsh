@@ -315,22 +315,20 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 					remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
 					remoteCmd.RunWithUi(ctx, p.communicator, ui)
 
-					break SwitchBlock
+					break ForLoop
 				// success (SSH)
 				case 1:
-					break SwitchBlock
+					break ForLoop
 				// waiting on pending reboot
 				case 1115:
-				case 1190:
 				case 1117:
+				case 1190:
 					time.Sleep(13 * time.Second)
 					break SwitchBlock
 				// unhandled exit code
 				default:
 					return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
 				}
-
-				break ForLoop
 			}
 		}
 
