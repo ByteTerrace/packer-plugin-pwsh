@@ -139,7 +139,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.PwshUpdateScript {
-		p.config.PwshUpdateCommand = defaultPwshUpdateScript
+		p.config.PwshUpdateScript = defaultPwshUpdateScript
 	}
 
 	if "" == p.config.RemoteEnvVarPath {
@@ -151,7 +151,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.RemotePwshUpdatePath {
-		p.config.PwshUpdateCommand = fmt.Sprintf(defaultRemotePwshUpdatePathFormat, uuid.TimeOrderedUUID())
+		p.config.RemotePwshUpdatePath = fmt.Sprintf(defaultRemotePwshUpdatePathFormat, uuid.TimeOrderedUUID())
 	}
 
 	if nil == p.config.Scripts {
@@ -186,6 +186,8 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 		return e
 	}
 
+	p.config.ctx.Data = contextData
+
 	if "" != inlineScriptFilePath {
 		defer os.Remove(inlineScriptFilePath)
 
@@ -193,8 +195,6 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	}
 
 	copy(scripts, p.config.Scripts)
-
-	p.config.ctx.Data = contextData
 
 	contextData["Path"] = p.config.RemotePath
 	contextData["Vars"] = p.config.RemoteEnvVarPath
