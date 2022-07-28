@@ -316,7 +316,7 @@ func (p *Provisioner) updatePowerShellInstallation(context context.Context, ui p
 		if e = p.uploadAndExecuteScripts(
 			command,
 			context,
-			([]string{scriptFileHandle.Name()}),
+			([]string{p.config.RemotePwshUpdatePath}),
 			ui,
 		); nil != e {
 			return e
