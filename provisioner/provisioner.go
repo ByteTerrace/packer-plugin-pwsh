@@ -299,36 +299,38 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 	} else if (0 != exitCode) && (1115 != exitCode) && (1190 == exitCode) {
 		return fmt.Errorf("Failed to reboot machine; exit code: %d", exitCode)
 	} else {
+	ForLoop:
 		for {
 			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
 			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
 			exitCode = remoteCmd.ExitStatus()
 
 			if nil != e {
-				break
+				break ForLoop
 			} else {
+			SwitchBlock:
 				switch exitCode {
 				// success (WinRM)
 				case 0:
 					remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
 					remoteCmd.RunWithUi(ctx, p.communicator, ui)
 
-					break
+					break SwitchBlock
 				// success (SSH)
 				case 1:
-					break
+					break SwitchBlock
 				// waiting on pending reboot
 				case 1115:
 				case 1190:
 				case 1117:
 					time.Sleep(13 * time.Second)
-					break
+					break SwitchBlock
 				// unhandled exit code
 				default:
 					return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
 				}
 
-				break
+				break ForLoop
 			}
 		}
 
