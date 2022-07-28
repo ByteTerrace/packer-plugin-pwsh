@@ -207,14 +207,14 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
 
 			if updateScriptPath, e := p.getInlineScriptFilePath([]string{configuration.PwshUpdateScript}); nil != e {
-				if e = p.uploadAndExecuteScripts(
-					command,
-					ctx,
-					([]string{updateScriptPath}),
-					ui,
-				); nil != e {
-					return e
-				}
+				return e
+			} else if e = p.uploadAndExecuteScripts(
+				command,
+				ctx,
+				([]string{updateScriptPath}),
+				ui,
+			); nil != e {
+				return e
 			}
 		}
 	}
