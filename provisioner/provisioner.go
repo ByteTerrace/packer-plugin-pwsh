@@ -195,12 +195,12 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 }
 
 func (p *Provisioner) executeScriptCollection(context context.Context, scripts []string, ui packersdk.Ui) error {
+	remotePath := p.config.RemotePath
+	p.generatedData["Path"] = remotePath
+
 	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
 	} else {
-		remotePath := p.config.RemotePath
-		p.generatedData["Path"] = remotePath
-
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
 		if e = p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui); nil != e {
@@ -275,12 +275,12 @@ func (p *Provisioner) initializeScriptCollection() ([]string, error) {
 }
 func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
 	if "" != p.config.PwshInstallerUri {
+		remotePath := p.config.RemotePwshUpdatePath
+		p.generatedData["Path"] = remotePath
+
 		if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
 			return e
 		} else {
-			remotePath := p.config.RemotePwshUpdatePath
-			p.generatedData["Path"] = remotePath
-
 			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
 
 			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshUpdateScript}); nil != e {
