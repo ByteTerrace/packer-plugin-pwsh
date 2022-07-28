@@ -37,6 +37,7 @@ type Config struct {
 	PwshUpdateCommand    string `mapstructure:"pwsh_update_command"`
 	PwshUpdateScript     string `mapstructure:"pwsh_update_script"`
 	RemoteEnvVarPath     string `mapstructure:"remote_env_var_path"`
+	RemotePwshUpdatePath string `mapstructure:"remote_pwsh_update_path"`
 
 	ctx interpolate.Context
 }
@@ -76,6 +77,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultPwshUpdateScript string
 	var defaultRemoteEnvVarPathFormat string
 	var defaultRemotePathFormat string
+	var defaultRemotePwshUpdatePath string
 
 	switch runtime.GOOS {
 	case "linux":
@@ -87,6 +89,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript = ""
 		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
+		defaultRemotePwshUpdatePath = `/tmp/packer-pwsh-installer-%s.sh`
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
@@ -106,6 +109,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript += "}\n"
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
+		defaultRemotePwshUpdatePath = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
 	default:
 		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
 	}
@@ -146,6 +150,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.RemotePath = fmt.Sprintf(defaultRemotePathFormat, uuid.TimeOrderedUUID())
 	}
 
+	if "" == p.config.RemotePwshUpdatePath {
+		p.config.PwshUpdateCommand = defaultRemotePwshUpdatePath
+	}
+
 	if nil == p.config.Scripts {
 		p.config.Scripts = make([]string, 0)
 	}
@@ -170,6 +178,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	p.communicator = communicator
 	p.generatedData = generatedData
 
+	contextData := p.generatedData
 	inlineScriptFilePath, e := p.getInlineScriptFilePath()
 	scripts := make([]string, len(p.config.Scripts))
 
@@ -185,35 +194,32 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	copy(scripts, p.config.Scripts)
 
-	contextData := p.generatedData
+	p.config.ctx.Data = contextData
+
 	contextData["Path"] = p.config.RemotePath
 	contextData["Vars"] = p.config.RemoteEnvVarPath
-	p.config.ctx.Data = contextData
-	command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx)
-
-	if nil != e {
-		return e
-	}
-
-	ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
 	if "" != p.config.PwshMsiUri {
-		if e = p.updatePowerShellInstallation(
-			command,
-			ctx,
-			ui,
-		); nil != e {
+		if e = p.updatePowerShellInstallation(ctx, ui); nil != e {
 			return e
 		}
 	}
 
-	if e = p.uploadAndExecuteScripts(
-		command,
-		ctx,
-		scripts,
-		ui,
-	); nil != e {
+	contextData["Path"] = p.config.RemotePwshUpdatePath
+
+	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
+	} else {
+		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
+
+		if e = p.uploadAndExecuteScripts(
+			command,
+			ctx,
+			scripts,
+			ui,
+		); nil != e {
+			return e
+		}
 	}
 
 	return nil
@@ -275,7 +281,7 @@ func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, scriptFileHa
 		return nil
 	}
 }
-func (p *Provisioner) updatePowerShellInstallation(command string, context context.Context, ui packersdk.Ui) error {
+func (p *Provisioner) updatePowerShellInstallation(context context.Context, ui packersdk.Ui) error {
 	const preparationErrorTemplate = "Error preparing PowerShell script: %s."
 
 	if (nil == p.config.Inline) || (0 == len(p.config.Inline)) {
@@ -292,7 +298,7 @@ func (p *Provisioner) updatePowerShellInstallation(command string, context conte
 
 	writer := bufio.NewWriter(scriptFileHandle)
 
-	command, e = interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx)
+	command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx)
 
 	if nil != e {
 		return e

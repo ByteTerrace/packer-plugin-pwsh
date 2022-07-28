@@ -33,6 +33,7 @@ type FlatConfig struct {
 	PwshUpdateCommand    *string           `mapstructure:"pwsh_update_command" cty:"pwsh_update_command" hcl:"pwsh_update_command"`
 	PwshUpdateScript     *string           `mapstructure:"pwsh_update_script" cty:"pwsh_update_script" hcl:"pwsh_update_script"`
 	RemoteEnvVarPath     *string           `mapstructure:"remote_env_var_path" cty:"remote_env_var_path" hcl:"remote_env_var_path"`
+	RemotePwshUpdatePath *string           `mapstructure:"remote_pwsh_update_path" cty:"remote_pwsh_update_path" hcl:"remote_pwsh_update_path"`
 }
 
 // FlatMapstructure returns a new FlatConfig.
@@ -70,6 +71,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"pwsh_update_command":        &hcldec.AttrSpec{Name: "pwsh_update_command", Type: cty.String, Required: false},
 		"pwsh_update_script":         &hcldec.AttrSpec{Name: "pwsh_update_script", Type: cty.String, Required: false},
 		"remote_env_var_path":        &hcldec.AttrSpec{Name: "remote_env_var_path", Type: cty.String, Required: false},
+		"remote_pwsh_update_path":    &hcldec.AttrSpec{Name: "remote_pwsh_update_path", Type: cty.String, Required: false},
 	}
 	return s
 }
