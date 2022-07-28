@@ -74,7 +74,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultExecuteCommand string
 	var defaultPwshMsiUri string
 	var defaultPwshUpdateCommand string
-	var defaultPwshUpdateScript string
+	var defaultPwshUpdateScriptFormat string
 	var defaultRemoteEnvVarPathFormat string
 	var defaultRemotePathFormat string
 	var defaultRemotePwshUpdatePathFormat string
@@ -86,7 +86,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultExecuteCommand = `pwsh -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass"`
 		defaultPwshMsiUri = ""
 		defaultPwshUpdateCommand = "chmod +x {{.Path}}; {{.Path}}"
-		defaultPwshUpdateScript = ""
+		defaultPwshUpdateScriptFormat = ""
 		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
 		defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
@@ -96,17 +96,17 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
 		defaultPwshMsiUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 		defaultPwshUpdateCommand = defaultExecuteCommand
-		defaultPwshUpdateScript = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
-		defaultPwshUpdateScript += "$exitCode = -1;\n"
-		defaultPwshUpdateScript += "try {\n"
-		defaultPwshUpdateScript += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
-		defaultPwshUpdateScript += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
-		defaultPwshUpdateScript += fmt.Sprintf("    Invoke-WebRequest -OutFile $tempFilePath -Uri '%s';\n", p.config.PwshMsiUri)
-		defaultPwshUpdateScript += "    $exitCode = (Start-Process -ArgumentList @('/i', $tempFilePath, '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
-		defaultPwshUpdateScript += "}\n"
-		defaultPwshUpdateScript += "finally {\n"
-		defaultPwshUpdateScript += "    exit $exitCode;\n"
-		defaultPwshUpdateScript += "}\n"
+		defaultPwshUpdateScriptFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
+		defaultPwshUpdateScriptFormat += "$exitCode = -1;\n"
+		defaultPwshUpdateScriptFormat += "try {\n"
+		defaultPwshUpdateScriptFormat += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+		defaultPwshUpdateScriptFormat += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
+		defaultPwshUpdateScriptFormat += "    Invoke-WebRequest -OutFile $tempFilePath -Uri '%s';\n"
+		defaultPwshUpdateScriptFormat += "    $exitCode = (Start-Process -ArgumentList @('/i', $tempFilePath, '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
+		defaultPwshUpdateScriptFormat += "}\n"
+		defaultPwshUpdateScriptFormat += "finally {\n"
+		defaultPwshUpdateScriptFormat += "    exit $exitCode;\n"
+		defaultPwshUpdateScriptFormat += "}\n"
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
 		defaultRemotePwshUpdatePathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
@@ -139,7 +139,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.PwshUpdateScript {
-		p.config.PwshUpdateScript = defaultPwshUpdateScript
+		p.config.PwshUpdateScript = fmt.Sprintf(defaultPwshUpdateScriptFormat, p.config.PwshMsiUri)
 	}
 
 	if "" == p.config.RemoteEnvVarPath {
