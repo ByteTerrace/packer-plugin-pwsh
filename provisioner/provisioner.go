@@ -24,8 +24,14 @@ import (
 )
 
 const (
-	defaultStartTimeout = (7 * time.Minute)
-	defaultTries        = 1
+	defaultStartTimeout            = (7 * time.Minute)
+	defaultTries                   = 1
+	pwshScriptClosingErrorFormat   = "Error closing PowerShell script: %s."
+	pwshScriptOpeningErrorFormat   = "Error opening PowerShell script: %s."
+	pwshScriptPreparingErrorFormat = "Error preparing PowerShell script: %s."
+	pwshScriptRemovingErrorFormat  = "Error removing PowerShell script: %s."
+	pwshScriptStatingErrorFormat   = "Error stating PowerShell script: %s."
+	pwshScriptUploadingErrorFormat = "Error uploading PowerShell script: %s."
 )
 
 type Config struct {
@@ -236,65 +242,57 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 }
 
 func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
-	const preparationErrorTemplate = "Error preparing PowerShell script: %s."
-
 	if (nil == lines) || (0 == len(lines)) {
 		return "", nil
-	}
+	} else {
+		if scriptFileHandle, e := tmp.File("pwsh-provisioner"); nil != e {
+			return "", e
+		} else {
+			writer := bufio.NewWriter(scriptFileHandle)
 
-	scriptFileHandle, e := tmp.File("pwsh-provisioner")
+			for _, command := range lines {
+				if _, e := writer.WriteString(command + "\n"); nil != e {
+					return "", fmt.Errorf(pwshScriptPreparingErrorFormat, e)
+				}
+			}
 
-	if nil != e {
-		return "", e
-	}
+			if e = writer.Flush(); nil != e {
+				return "", fmt.Errorf(pwshScriptPreparingErrorFormat, e)
+			} else if e = scriptFileHandle.Close(); nil != e {
+				return "", fmt.Errorf(pwshScriptPreparingErrorFormat, e)
+			}
 
-	defer scriptFileHandle.Close()
-
-	writer := bufio.NewWriter(scriptFileHandle)
-
-	for _, command := range lines {
-		if _, e := writer.WriteString(command + "\n"); nil != e {
-			return "", fmt.Errorf(preparationErrorTemplate, e)
+			return scriptFileHandle.Name(), nil
 		}
 	}
-
-	if e := writer.Flush(); nil != e {
-		return "", fmt.Errorf(preparationErrorTemplate, e)
-	}
-
-	scriptFileHandle.Close()
-
-	return scriptFileHandle.Name(), nil
 }
 func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, remotePath string, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
 	return func(context context.Context) error {
 		if _, e := scriptFileHandle.Seek(0, 0); nil != e {
 			return e
+		} else if e = p.communicator.Upload(remotePath, scriptFileHandle, scriptFileInfo); nil != e {
+			return fmt.Errorf(pwshScriptUploadingErrorFormat, e)
+		} else {
+			remoteCmd := &packersdk.RemoteCmd{Command: command}
+
+			if e = remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
+				return e
+			} else {
+				ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", remoteCmd.ExitStatus()))
+
+				if e = p.config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
+					return e
+				}
+			}
+
+			return nil
 		}
-
-		if e := p.communicator.Upload(remotePath, scriptFileHandle, scriptFileInfo); nil != e {
-			return fmt.Errorf("Error uploading script: %s.", e)
-		}
-
-		remoteCmd := &packersdk.RemoteCmd{Command: command}
-
-		if e := remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
-			return e
-		}
-
-		ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", remoteCmd.ExitStatus()))
-
-		if e := p.config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
-			return e
-		}
-
-		return nil
 	}
 }
 func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, remotePath string, scripts []string, ui packersdk.Ui) error {
 	for _, path := range scripts {
 		if scriptFileInfo, e := os.Stat(path); nil != e {
-			return fmt.Errorf("Error stating PowerShell script: %s.", e)
+			return fmt.Errorf(pwshScriptStatingErrorFormat, e)
 		} else {
 			ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", path))
 
@@ -303,7 +301,7 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 			}
 
 			if scriptFileHandle, e := os.Open(path); nil != e {
-				return fmt.Errorf("Error opening PowerShell script: %s.", e)
+				return fmt.Errorf(pwshScriptOpeningErrorFormat, e)
 			} else {
 				if e = (retry.Config{
 					StartTimeout: defaultStartTimeout,
@@ -322,11 +320,11 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 				}
 
 				if e = scriptFileHandle.Close(); nil != e {
-					return fmt.Errorf("Error closing PowerShell script: %s.", e)
+					return fmt.Errorf(pwshScriptClosingErrorFormat, e)
 				}
 
 				if e = os.Remove(scriptFileHandle.Name()); nil != e {
-					return fmt.Errorf("Error removing PowerShell script: %s.", e)
+					return fmt.Errorf(pwshScriptRemovingErrorFormat, e)
 				}
 			}
 		}
