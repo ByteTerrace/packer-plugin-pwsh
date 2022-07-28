@@ -185,11 +185,11 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	if scripts, e := p.initializeScriptCollection(); nil != e {
+	if e := p.updatePwshInstallation(ctx, ui); nil != e {
+		return e
+	} else if scripts, e := p.initializeScriptCollection(); nil != e {
 		return e
 	} else {
-		p.updatePwshInstallation(ctx, ui)
-
 		return p.executeScriptCollection(ctx, scripts, ui)
 	}
 }
@@ -204,12 +204,8 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scripts [
 	} else {
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-		if e = p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui); nil != e {
-			return e
-		}
+		return p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui)
 	}
-
-	return nil
 }
 func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
 	if (nil == lines) || (0 == len(lines)) {
@@ -230,9 +226,9 @@ func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
 				return "", fmt.Errorf(pwshScriptPreparingErrorFormat, e)
 			} else if e = scriptFileHandle.Close(); nil != e {
 				return "", fmt.Errorf(pwshScriptPreparingErrorFormat, e)
+			} else {
+				return scriptFileHandle.Name(), nil
 			}
-
-			return scriptFileHandle.Name(), nil
 		}
 	}
 }
@@ -250,32 +246,27 @@ func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, remotePath s
 			} else {
 				ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", remoteCmd.ExitStatus()))
 
-				if e = p.config.ValidExitCode(remoteCmd.ExitStatus()); nil != e {
-					return e
-				}
+				return p.config.ValidExitCode(remoteCmd.ExitStatus())
 			}
-
-			return nil
 		}
 	}
 }
 func (p *Provisioner) initializeScriptCollection() ([]string, error) {
-	inlineScriptFilePath, e := p.getInlineScriptFilePath(p.config.Inline)
-	scripts := make([]string, len(p.config.Scripts))
-
-	if nil != e {
+	if inlineScriptFilePath, e := p.getInlineScriptFilePath(p.config.Inline); nil != e {
 		return nil, e
+	} else {
+		scripts := make([]string, len(p.config.Scripts))
+
+		if "" != inlineScriptFilePath {
+			defer os.Remove(inlineScriptFilePath)
+
+			scripts = append(scripts, inlineScriptFilePath)
+		}
+
+		copy(scripts, p.config.Scripts)
+
+		return scripts, nil
 	}
-
-	if "" != inlineScriptFilePath {
-		defer os.Remove(inlineScriptFilePath)
-
-		scripts = append(scripts, inlineScriptFilePath)
-	}
-
-	copy(scripts, p.config.Scripts)
-
-	return scripts, nil
 }
 func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
 	if "" != p.config.PwshInstallerUri {
@@ -290,8 +281,8 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 
 			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshUpdateScript}); nil != e {
 				return e
-			} else if e = p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui); nil != e {
-				return e
+			} else {
+				return p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui)
 			}
 		}
 	}
@@ -326,14 +317,14 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 					),
 				)); nil != e {
 					return e
-				}
+				} else {
+					if e = scriptFileHandle.Close(); nil != e {
+						return fmt.Errorf(pwshScriptClosingErrorFormat, e)
+					}
 
-				if e = scriptFileHandle.Close(); nil != e {
-					return fmt.Errorf(pwshScriptClosingErrorFormat, e)
-				}
-
-				if e = os.Remove(scriptFileHandle.Name()); nil != e {
-					return fmt.Errorf(pwshScriptRemovingErrorFormat, e)
+					if e = os.Remove(scriptFileHandle.Name()); nil != e {
+						return fmt.Errorf(pwshScriptRemovingErrorFormat, e)
+					}
 				}
 			}
 		}
