@@ -33,6 +33,9 @@ type Config struct {
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
 	ElevatedEnvVarFormat string `mapstructure:"elevated_env_var_format"`
+	PwshMsiUri           string `mapstructure:"pwsh_msi_uri"`
+	PwshUpdateCommand    string `mapstructure:"pwsh_update_command"`
+	PwshUpdateScript     string `mapstructure:"pwsh_update_script"`
 	RemoteEnvVarPath     string `mapstructure:"remote_env_var_path"`
 
 	ctx interpolate.Context
@@ -68,6 +71,9 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultElevatedEnvVarFormat string
 	var defaultEnvVarFormat string
 	var defaultExecuteCommand string
+	var defaultPwshMsiUri string
+	var defaultPwshUpdateCommand string
+	var defaultPwshUpdateScript string
 	var defaultRemoteEnvVarPathFormat string
 	var defaultRemotePathFormat string
 
@@ -76,12 +82,28 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultElevatedEnvVarFormat = "%s='%s'"
 		defaultEnvVarFormat = "%s='%s'"
 		defaultExecuteCommand = `pwsh -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass"`
+		defaultPwshMsiUri = ""
+		defaultPwshUpdateCommand = "chmod +x {{.Path}}; {{.Path}}"
+		defaultPwshUpdateScript = ""
 		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
 		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
+		defaultPwshMsiUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
+		defaultPwshUpdateCommand = defaultExecuteCommand
+		defaultPwshUpdateScript = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
+		defaultPwshUpdateScript += "$exitCode = -1;\n"
+		defaultPwshUpdateScript += "try {\n"
+		defaultPwshUpdateScript += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+		defaultPwshUpdateScript += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
+		defaultPwshUpdateScript += fmt.Sprintf("    Invoke-WebRequest -OutFile $tempFilePath -Uri '%s';\n", p.config.PwshMsiUri)
+		defaultPwshUpdateScript += "    $exitCode = (Start-Process -ArgumentList @('/i', $tempFilePath, '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
+		defaultPwshUpdateScript += "}\n"
+		defaultPwshUpdateScript += "finally {\n"
+		defaultPwshUpdateScript += "    exit $exitCode;\n"
+		defaultPwshUpdateScript += "}\n"
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
 	default:
@@ -102,6 +124,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 	if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
 		p.config.Inline = nil
+	}
+
+	if ("" == p.config.PwshMsiUri) && ("" != defaultPwshMsiUri) {
+		p.config.PwshMsiUri = defaultPwshMsiUri
+	}
+
+	if "" == p.config.PwshUpdateCommand {
+		p.config.PwshUpdateCommand = defaultPwshUpdateCommand
+	}
+
+	if "" == p.config.PwshUpdateScript {
+		p.config.PwshUpdateCommand = defaultPwshUpdateScript
 	}
 
 	if "" == p.config.RemoteEnvVarPath {
@@ -136,9 +170,8 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	p.communicator = communicator
 	p.generatedData = generatedData
 
-	config := p.config
 	inlineScriptFilePath, e := p.getInlineScriptFilePath()
-	scripts := make([]string, len(config.Scripts))
+	scripts := make([]string, len(p.config.Scripts))
 
 	if nil != e {
 		return e
@@ -150,13 +183,13 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 		scripts = append(scripts, inlineScriptFilePath)
 	}
 
-	copy(scripts, config.Scripts)
+	copy(scripts, p.config.Scripts)
 
 	contextData := p.generatedData
-	contextData["Path"] = config.RemotePath
-	contextData["Vars"] = config.RemoteEnvVarPath
-	config.ctx.Data = contextData
-	command, e := interpolate.Render(config.ExecuteCommand, &config.ctx)
+	contextData["Path"] = p.config.RemotePath
+	contextData["Vars"] = p.config.RemoteEnvVarPath
+	p.config.ctx.Data = contextData
+	command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx)
 
 	if nil != e {
 		return e
@@ -164,24 +197,22 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-	e = p.updatePowerShellInstallation(
-		command,
-		ctx,
-		ui,
-	)
-
-	if nil != e {
-		return e
+	if "" != p.config.PwshMsiUri {
+		if e = p.updatePowerShellInstallation(
+			command,
+			ctx,
+			ui,
+		); nil != e {
+			return e
+		}
 	}
 
-	e = p.uploadAndExecuteScripts(
+	if e = p.uploadAndExecuteScripts(
 		command,
 		ctx,
 		scripts,
 		ui,
-	)
-
-	if nil != e {
+	); nil != e {
 		return e
 	}
 
@@ -261,18 +292,13 @@ func (p *Provisioner) updatePowerShellInstallation(command string, context conte
 
 	writer := bufio.NewWriter(scriptFileHandle)
 
-	updatePowerShellCommand := "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
-	updatePowerShellCommand += "$exitCode = -1;\n"
-	updatePowerShellCommand += "try {\n"
-	updatePowerShellCommand += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
-	updatePowerShellCommand += "    Invoke-WebRequest -OutFile 'C:/Windows/Temp/packer-pwsh-installer.msi' -Uri 'https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi';\n"
-	updatePowerShellCommand += "    $exitCode = (Start-Process -ArgumentList @('/i', 'C:\\Windows\\Temp\\packer-pwsh-installer.msi', '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
-	updatePowerShellCommand += "}\n"
-	updatePowerShellCommand += "finally {\n"
-	updatePowerShellCommand += "    exit $exitCode;\n"
-	updatePowerShellCommand += "}\n"
+	command, e = interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx)
 
-	if _, e = writer.WriteString(updatePowerShellCommand); nil != e {
+	if nil != e {
+		return e
+	}
+
+	if _, e = writer.WriteString(p.config.PwshUpdateScript); nil != e {
 		return fmt.Errorf(preparationErrorTemplate, e)
 	}
 
