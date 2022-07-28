@@ -29,7 +29,7 @@ type FlatConfig struct {
 	RemotePath           *string           `mapstructure:"remote_path" cty:"remote_path" hcl:"remote_path"`
 	ExecuteCommand       *string           `mapstructure:"execute_command" cty:"execute_command" hcl:"execute_command"`
 	ElevatedEnvVarFormat *string           `mapstructure:"elevated_env_var_format" cty:"elevated_env_var_format" hcl:"elevated_env_var_format"`
-	PwshMsiUri           *string           `mapstructure:"pwsh_msi_uri" cty:"pwsh_msi_uri" hcl:"pwsh_msi_uri"`
+	PwshInstallerUri     *string           `mapstructure:"pwsh_installer_uri" cty:"pwsh_installer_uri" hcl:"pwsh_installer_uri"`
 	PwshUpdateCommand    *string           `mapstructure:"pwsh_update_command" cty:"pwsh_update_command" hcl:"pwsh_update_command"`
 	PwshUpdateScript     *string           `mapstructure:"pwsh_update_script" cty:"pwsh_update_script" hcl:"pwsh_update_script"`
 	RemoteEnvVarPath     *string           `mapstructure:"remote_env_var_path" cty:"remote_env_var_path" hcl:"remote_env_var_path"`
@@ -67,7 +67,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"remote_path":                &hcldec.AttrSpec{Name: "remote_path", Type: cty.String, Required: false},
 		"execute_command":            &hcldec.AttrSpec{Name: "execute_command", Type: cty.String, Required: false},
 		"elevated_env_var_format":    &hcldec.AttrSpec{Name: "elevated_env_var_format", Type: cty.String, Required: false},
-		"pwsh_msi_uri":               &hcldec.AttrSpec{Name: "pwsh_msi_uri", Type: cty.String, Required: false},
+		"pwsh_installer_uri":         &hcldec.AttrSpec{Name: "pwsh_installer_uri", Type: cty.String, Required: false},
 		"pwsh_update_command":        &hcldec.AttrSpec{Name: "pwsh_update_command", Type: cty.String, Required: false},
 		"pwsh_update_script":         &hcldec.AttrSpec{Name: "pwsh_update_script", Type: cty.String, Required: false},
 		"remote_env_var_path":        &hcldec.AttrSpec{Name: "remote_env_var_path", Type: cty.String, Required: false},

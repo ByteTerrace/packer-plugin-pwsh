@@ -33,7 +33,7 @@ type Config struct {
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
 	ElevatedEnvVarFormat string `mapstructure:"elevated_env_var_format"`
-	PwshMsiUri           string `mapstructure:"pwsh_msi_uri"`
+	PwshInstallerUri     string `mapstructure:"pwsh_installer_uri"`
 	PwshUpdateCommand    string `mapstructure:"pwsh_update_command"`
 	PwshUpdateScript     string `mapstructure:"pwsh_update_script"`
 	RemoteEnvVarPath     string `mapstructure:"remote_env_var_path"`
@@ -72,7 +72,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultElevatedEnvVarFormat string
 	var defaultEnvVarFormat string
 	var defaultExecuteCommand string
-	var defaultPwshMsiUri string
+	var defaultPwshInstallerUri string
 	var defaultPwshUpdateCommand string
 	var defaultPwshUpdateScriptFormat string
 	var defaultRemoteEnvVarPathFormat string
@@ -84,7 +84,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultElevatedEnvVarFormat = "%s='%s'"
 		defaultEnvVarFormat = "%s='%s'"
 		defaultExecuteCommand = `pwsh -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass"`
-		defaultPwshMsiUri = ""
+		defaultPwshInstallerUri = ""
 		defaultPwshUpdateCommand = "chmod +x {{.Path}}; {{.Path}}"
 		defaultPwshUpdateScriptFormat = ""
 		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
@@ -94,7 +94,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
 		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
-		defaultPwshMsiUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
+		defaultPwshInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 		defaultPwshUpdateCommand = defaultExecuteCommand
 		defaultPwshUpdateScriptFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
 		defaultPwshUpdateScriptFormat += "$exitCode = -1;\n"
@@ -130,8 +130,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Inline = nil
 	}
 
-	if ("" == p.config.PwshMsiUri) && ("" != defaultPwshMsiUri) {
-		p.config.PwshMsiUri = defaultPwshMsiUri
+	if ("" == p.config.PwshInstallerUri) && ("" != defaultPwshInstallerUri) {
+		p.config.PwshInstallerUri = defaultPwshInstallerUri
 	}
 
 	if "" == p.config.PwshUpdateCommand {
@@ -139,7 +139,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.PwshUpdateScript {
-		p.config.PwshUpdateScript = fmt.Sprintf(defaultPwshUpdateScriptFormat, p.config.PwshMsiUri)
+		p.config.PwshUpdateScript = fmt.Sprintf(defaultPwshUpdateScriptFormat, p.config.PwshInstallerUri)
 	}
 
 	if "" == p.config.RemoteEnvVarPath {
@@ -175,12 +175,16 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicator packersdk.Communicator, generatedData map[string]interface{}) error {
+	var remotePath string
+
 	p.communicator = communicator
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
 	configuration := p.config
 	contextData := generatedData
+
+	// initialize script collection
 	inlineScriptFilePath, e := p.getInlineScriptFilePath(configuration.Inline)
 	scripts := make([]string, len(configuration.Scripts))
 
@@ -196,8 +200,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	copy(scripts, configuration.Scripts)
 
-	if "" != configuration.PwshMsiUri {
-		contextData["Path"] = configuration.RemotePwshUpdatePath
+	// update PowerShell installation
+	if "" != configuration.PwshInstallerUri {
+		remotePath = configuration.RemotePwshUpdatePath
+		contextData["Path"] = remotePath
 
 		if command, e := interpolate.Render(configuration.PwshUpdateCommand, &configuration.ctx); nil != e {
 			return e
@@ -206,32 +212,22 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 			if updateScriptPath, e := p.getInlineScriptFilePath([]string{configuration.PwshUpdateScript}); nil != e {
 				return e
-			} else if e = p.uploadAndExecuteScripts(
-				command,
-				ctx,
-				configuration.RemotePwshUpdatePath,
-				([]string{updateScriptPath}),
-				ui,
-			); nil != e {
+			} else if e = p.uploadAndExecuteScripts(command, ctx, remotePath, ([]string{updateScriptPath}), ui); nil != e {
 				return e
 			}
 		}
 	}
 
-	contextData["Path"] = configuration.RemotePath
+	// execute script collection
+	remotePath = configuration.RemotePath
+	contextData["Path"] = remotePath
 
 	if command, e := interpolate.Render(configuration.ExecuteCommand, &configuration.ctx); nil != e {
 		return e
 	} else {
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-		if e = p.uploadAndExecuteScripts(
-			command,
-			ctx,
-			configuration.RemotePath,
-			scripts,
-			ui,
-		); nil != e {
+		if e = p.uploadAndExecuteScripts(command, ctx, remotePath, scripts, ui); nil != e {
 			return e
 		}
 	}
@@ -297,45 +293,43 @@ func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, remotePath s
 }
 func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, remotePath string, scripts []string, ui packersdk.Ui) error {
 	for _, path := range scripts {
-		scriptFileInfo, e := os.Stat(path)
-
-		if nil != e {
+		if scriptFileInfo, e := os.Stat(path); nil != e {
 			return fmt.Errorf("Error stating PowerShell script: %s.", e)
+		} else {
+			ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", path))
+
+			if os.IsPathSeparator(remotePath[len(remotePath)-1]) {
+				remotePath += filepath.Base(scriptFileInfo.Name())
+			}
+
+			if scriptFileHandle, e := os.Open(path); nil != e {
+				return fmt.Errorf("Error opening PowerShell script: %s.", e)
+			} else {
+				if e = (retry.Config{
+					StartTimeout: defaultStartTimeout,
+					Tries:        defaultTries,
+				}.Run(
+					context,
+					p.getUploadAndExecuteScriptFunc(
+						command,
+						remotePath,
+						scriptFileHandle,
+						&scriptFileInfo,
+						ui,
+					),
+				)); nil != e {
+					return e
+				}
+
+				if e = scriptFileHandle.Close(); nil != e {
+					return fmt.Errorf("Error closing PowerShell script: %s.", e)
+				}
+
+				if e = os.Remove(scriptFileHandle.Name()); nil != e {
+					return fmt.Errorf("Error removing PowerShell script: %s.", e)
+				}
+			}
 		}
-
-		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", path))
-
-		if os.IsPathSeparator(remotePath[len(remotePath)-1]) {
-			remotePath += filepath.Base(scriptFileInfo.Name())
-		}
-
-		scriptFileHandle, e := os.Open(path)
-
-		if nil != e {
-			return fmt.Errorf("Error opening PowerShell script: %s.", e)
-		}
-
-		defer scriptFileHandle.Close()
-
-		e = retry.Config{
-			StartTimeout: defaultStartTimeout,
-			Tries:        defaultTries,
-		}.Run(
-			context,
-			p.getUploadAndExecuteScriptFunc(
-				command,
-				remotePath,
-				scriptFileHandle,
-				&scriptFileInfo,
-				ui,
-			),
-		)
-
-		if e != nil {
-			return e
-		}
-
-		scriptFileHandle.Close()
 	}
 
 	return nil
