@@ -380,9 +380,9 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 					}
 
 					// TODO: Implement reboot check.
-					if true {
-						p.rebootMachine(context, ui)
-					}
+					//if true {
+					//	p.rebootMachine(context, ui)
+					//}
 				}
 			}
 		}
