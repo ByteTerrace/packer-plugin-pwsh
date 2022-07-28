@@ -77,7 +77,6 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultPwshUpdateScript string
 	var defaultRemoteEnvVarPathFormat string
 	var defaultRemotePathFormat string
-	var defaultRemotePwshUpdatePathFormat string
 
 	switch runtime.GOOS {
 	case "linux":
@@ -89,7 +88,6 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript = ""
 		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
-		defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
@@ -109,7 +107,6 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript += "}\n"
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
-		defaultRemotePwshUpdatePathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
 	default:
 		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
 	}
@@ -150,10 +147,6 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.RemotePath = fmt.Sprintf(defaultRemotePathFormat, uuid.TimeOrderedUUID())
 	}
 
-	if "" == p.config.RemotePwshUpdatePath {
-		p.config.RemotePwshUpdatePath = fmt.Sprintf(defaultRemotePwshUpdatePathFormat, uuid.TimeOrderedUUID())
-	}
-
 	if nil == p.config.Scripts {
 		p.config.Scripts = make([]string, 0)
 	}
@@ -179,7 +172,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	p.generatedData = generatedData
 
 	contextData := p.generatedData
-	inlineScriptFilePath, e := p.getInlineScriptFilePath()
+	inlineScriptFilePath, e := p.getInlineScriptFilePath(p.config.Inline)
 	scripts := make([]string, len(p.config.Scripts))
 
 	if nil != e {
@@ -194,18 +187,28 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	copy(scripts, p.config.Scripts)
 
-	contextData["Path"] = p.config.RemotePwshUpdatePath
+	contextData["Path"] = p.config.RemotePath
 	contextData["Vars"] = p.config.RemoteEnvVarPath
 	p.config.ctx.Data = contextData
 
 	if "" != p.config.PwshMsiUri {
-		if e = p.updatePowerShellInstallation(ctx, ui); nil != e {
+		if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
 			return e
+		} else {
+			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
+
+			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshUpdateScript}); nil != e {
+				if e = p.uploadAndExecuteScripts(
+					command,
+					ctx,
+					([]string{updateScriptPath}),
+					ui,
+				); nil != e {
+					return e
+				}
+			}
 		}
 	}
-
-	contextData["Path"] = p.config.RemotePath
-	p.config.ctx.Data = contextData
 
 	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
@@ -225,10 +228,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	return nil
 }
 
-func (p *Provisioner) getInlineScriptFilePath() (string, error) {
+func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
 	const preparationErrorTemplate = "Error preparing PowerShell script: %s."
 
-	if (nil == p.config.Inline) || (0 == len(p.config.Inline)) {
+	if (nil == lines) || (0 == len(lines)) {
 		return "", nil
 	}
 
@@ -242,7 +245,7 @@ func (p *Provisioner) getInlineScriptFilePath() (string, error) {
 
 	writer := bufio.NewWriter(scriptFileHandle)
 
-	for _, command := range p.config.Inline {
+	for _, command := range lines {
 		if _, e := writer.WriteString(command + "\n"); nil != e {
 			return "", fmt.Errorf(preparationErrorTemplate, e)
 		}
@@ -280,50 +283,6 @@ func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, scriptFileHa
 
 		return nil
 	}
-}
-func (p *Provisioner) updatePowerShellInstallation(context context.Context, ui packersdk.Ui) error {
-	const preparationErrorTemplate = "Error preparing PowerShell script: %s."
-
-	if (nil == p.config.Inline) || (0 == len(p.config.Inline)) {
-		return nil
-	}
-
-	scriptFileHandle, e := tmp.File("pwsh-provisioner")
-
-	if nil != e {
-		return e
-	}
-
-	defer scriptFileHandle.Close()
-
-	writer := bufio.NewWriter(scriptFileHandle)
-
-	if _, e = writer.WriteString(p.config.PwshUpdateScript); nil != e {
-		return fmt.Errorf(preparationErrorTemplate, e)
-	}
-
-	if e = writer.Flush(); nil != e {
-		return fmt.Errorf(preparationErrorTemplate, e)
-	}
-
-	scriptFileHandle.Close()
-
-	if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
-		return e
-	} else {
-		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
-
-		if e = p.uploadAndExecuteScripts(
-			command,
-			context,
-			([]string{p.config.RemotePwshUpdatePath}),
-			ui,
-		); nil != e {
-			return e
-		}
-	}
-
-	return nil
 }
 func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, scripts []string, ui packersdk.Ui) error {
 	for _, path := range scripts {
