@@ -77,6 +77,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultPwshUpdateScript string
 	var defaultRemoteEnvVarPathFormat string
 	var defaultRemotePathFormat string
+	var defaultRemotePwshUpdatePathFormat string
 
 	switch runtime.GOOS {
 	case "linux":
@@ -88,6 +89,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript = ""
 		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
+		defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
@@ -107,6 +109,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript += "}\n"
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
+		defaultRemotePwshUpdatePathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
 	default:
 		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
 	}
@@ -147,6 +150,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.RemotePath = fmt.Sprintf(defaultRemotePathFormat, uuid.TimeOrderedUUID())
 	}
 
+	if "" == p.config.RemotePwshUpdatePath {
+		p.config.RemotePwshUpdatePath = fmt.Sprintf(defaultRemotePwshUpdatePathFormat, uuid.TimeOrderedUUID())
+	}
+
 	if nil == p.config.Scripts {
 		p.config.Scripts = make([]string, 0)
 	}
@@ -169,10 +176,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 }
 func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicator packersdk.Communicator, generatedData map[string]interface{}) error {
 	p.communicator = communicator
+	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	contextData := p.generatedData
+	contextData := generatedData
 	inlineScriptFilePath, e := p.getInlineScriptFilePath(p.config.Inline)
+	remotePath := p.config.RemotePath
 	scripts := make([]string, len(p.config.Scripts))
 
 	if nil != e {
@@ -188,8 +197,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	copy(scripts, p.config.Scripts)
 
 	contextData["Path"] = p.config.RemotePath
-	contextData["Vars"] = p.config.RemoteEnvVarPath
-	p.config.ctx.Data = contextData
+	p.config.RemotePath = p.config.RemotePwshUpdatePath
 
 	if "" != p.config.PwshMsiUri {
 		if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
@@ -209,6 +217,9 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 			}
 		}
 	}
+
+	contextData["Path"] = p.config.RemotePath
+	p.config.RemotePath = remotePath
 
 	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
