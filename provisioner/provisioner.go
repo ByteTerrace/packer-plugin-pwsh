@@ -195,16 +195,23 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 }
 
 func (p *Provisioner) executeScriptCollection(context context.Context, scripts []string, ui packersdk.Ui) error {
-	remotePath := p.config.RemotePath
-
-	p.generatedData["Path"] = remotePath
-
 	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
 	} else {
+		remotePath := p.config.RemotePath
+		p.generatedData["Path"] = remotePath
+
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-		return p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui)
+		if e = p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui); nil != e {
+			return e
+		} else {
+			if len(scripts) != len(p.config.Scripts) { // Delete inline script, if exists.
+				return os.Remove(scripts[0])
+			} else {
+				return nil
+			}
+		}
 	}
 }
 func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
@@ -258,8 +265,6 @@ func (p *Provisioner) initializeScriptCollection() ([]string, error) {
 		scripts := make([]string, len(p.config.Scripts))
 
 		if "" != inlineScriptFilePath {
-			defer os.Remove(inlineScriptFilePath)
-
 			scripts = append(scripts, inlineScriptFilePath)
 		}
 
@@ -270,13 +275,12 @@ func (p *Provisioner) initializeScriptCollection() ([]string, error) {
 }
 func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
 	if "" != p.config.PwshInstallerUri {
-		remotePath := p.config.RemotePwshUpdatePath
-
-		p.generatedData["Path"] = remotePath
-
 		if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
 			return e
 		} else {
+			remotePath := p.config.RemotePwshUpdatePath
+			p.generatedData["Path"] = remotePath
+
 			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
 
 			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshUpdateScript}); nil != e {
@@ -285,9 +289,9 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 				return p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui)
 			}
 		}
+	} else {
+		return nil
 	}
-
-	return nil
 }
 func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, remotePath string, scripts []string, ui packersdk.Ui) error {
 	for _, path := range scripts {
