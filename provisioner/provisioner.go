@@ -182,7 +182,6 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	configuration := p.config
 	contextData := generatedData
 	inlineScriptFilePath, e := p.getInlineScriptFilePath(configuration.Inline)
-	remotePath := configuration.RemotePath
 	scripts := make([]string, len(configuration.Scripts))
 
 	if nil != e {
@@ -199,7 +198,6 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 
 	if "" != configuration.PwshMsiUri {
 		contextData["Path"] = configuration.RemotePwshUpdatePath
-		configuration.RemotePath = configuration.RemotePwshUpdatePath
 
 		if command, e := interpolate.Render(configuration.PwshUpdateCommand, &configuration.ctx); nil != e {
 			return e
@@ -211,6 +209,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 			} else if e = p.uploadAndExecuteScripts(
 				command,
 				ctx,
+				configuration.RemotePwshUpdatePath,
 				([]string{updateScriptPath}),
 				ui,
 			); nil != e {
@@ -220,7 +219,6 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 	}
 
 	contextData["Path"] = configuration.RemotePath
-	configuration.RemotePath = remotePath
 
 	if command, e := interpolate.Render(configuration.ExecuteCommand, &configuration.ctx); nil != e {
 		return e
@@ -230,6 +228,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicat
 		if e = p.uploadAndExecuteScripts(
 			command,
 			ctx,
+			configuration.RemotePath,
 			scripts,
 			ui,
 		); nil != e {
@@ -271,13 +270,13 @@ func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
 
 	return scriptFileHandle.Name(), nil
 }
-func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
+func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, remotePath string, scriptFileHandle *os.File, scriptFileInfo *os.FileInfo, ui packersdk.Ui) (fn func(context.Context) error) {
 	return func(context context.Context) error {
 		if _, e := scriptFileHandle.Seek(0, 0); nil != e {
 			return e
 		}
 
-		if e := p.communicator.Upload(p.config.RemotePath, scriptFileHandle, scriptFileInfo); nil != e {
+		if e := p.communicator.Upload(remotePath, scriptFileHandle, scriptFileInfo); nil != e {
 			return fmt.Errorf("Error uploading script: %s.", e)
 		}
 
@@ -296,7 +295,7 @@ func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, scriptFileHa
 		return nil
 	}
 }
-func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, scripts []string, ui packersdk.Ui) error {
+func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, remotePath string, scripts []string, ui packersdk.Ui) error {
 	for _, path := range scripts {
 		scriptFileInfo, e := os.Stat(path)
 
@@ -306,8 +305,8 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 
 		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", path))
 
-		if os.IsPathSeparator(p.config.RemotePath[len(p.config.RemotePath)-1]) {
-			p.config.RemotePath += filepath.Base(scriptFileInfo.Name())
+		if os.IsPathSeparator(remotePath[len(remotePath)-1]) {
+			remotePath += filepath.Base(scriptFileInfo.Name())
 		}
 
 		scriptFileHandle, e := os.Open(path)
@@ -325,6 +324,7 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 			context,
 			p.getUploadAndExecuteScriptFunc(
 				command,
+				remotePath,
 				scriptFileHandle,
 				&scriptFileInfo,
 				ui,
