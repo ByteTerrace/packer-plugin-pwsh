@@ -38,12 +38,15 @@ type Config struct {
 	shell.Provisioner               `mapstructure:",squash"`
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
-	ElevatedEnvVarFormat string `mapstructure:"elevated_env_var_format"`
-	PwshInstallerUri     string `mapstructure:"pwsh_installer_uri"`
-	PwshUpdateCommand    string `mapstructure:"pwsh_update_command"`
-	PwshUpdateScript     string `mapstructure:"pwsh_update_script"`
-	RemoteEnvVarPath     string `mapstructure:"remote_env_var_path"`
-	RemotePwshUpdatePath string `mapstructure:"remote_pwsh_update_path"`
+	ElevatedEnvVarFormat  string `mapstructure:"elevated_env_var_format"`
+	PwshInstallerUri      string `mapstructure:"pwsh_installer_uri"`
+	PwshUpdateCommand     string `mapstructure:"pwsh_update_command"`
+	PwshUpdateScript      string `mapstructure:"pwsh_update_script"`
+	RebootCompleteCommand string `mapstructure:"reboot_complete_command"`
+	RebootInitiateCommand string `mapstructure:"reboot_initiate_command"`
+	RebootValidateCommand string `mapstructure:"reboot_validate_command"`
+	RemoteEnvVarPath      string `mapstructure:"remote_env_var_path"`
+	RemotePwshUpdatePath  string `mapstructure:"remote_pwsh_update_path"`
 
 	ctx interpolate.Context
 }
@@ -81,21 +84,24 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultPwshInstallerUri string
 	var defaultPwshUpdateCommand string
 	var defaultPwshUpdateScriptFormat string
+	var defaultRebootCompleteCommand string
+	var defaultRebootInitiateCommand string
+	var defaultRebootValidateCommand string
 	var defaultRemoteEnvVarPathFormat string
 	var defaultRemotePathFormat string
 	var defaultRemotePwshUpdatePathFormat string
 
 	switch runtime.GOOS {
-	case "linux":
-		defaultElevatedEnvVarFormat = "%s='%s'"
-		defaultEnvVarFormat = "%s='%s'"
-		defaultExecuteCommand = `pwsh -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass"`
-		defaultPwshInstallerUri = ""
-		defaultPwshUpdateCommand = "chmod +x {{.Path}}; {{.Path}}"
-		defaultPwshUpdateScriptFormat = ""
-		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
-		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
-		defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
+	//case "linux":
+	//	defaultElevatedEnvVarFormat = "%s='%s'"
+	//	defaultEnvVarFormat = "%s='%s'"
+	//	defaultExecuteCommand = `pwsh -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass"`
+	//	defaultPwshInstallerUri = ""
+	//	defaultPwshUpdateCommand = "chmod +x {{.Path}}; {{.Path}}"
+	//	defaultPwshUpdateScriptFormat = ""
+	//	defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
+	//	defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
+	//	defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
@@ -113,6 +119,9 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScriptFormat += "finally {\n"
 		defaultPwshUpdateScriptFormat += "    exit $exitCode;\n"
 		defaultPwshUpdateScriptFormat += "}\n"
+		defaultRebootCompleteCommand = `shutdown /r /f /t 0 /c "packer reboot test"`
+		defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
+		defaultRebootValidateCommand = ""
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
 		defaultRemotePwshUpdatePathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
@@ -148,6 +157,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.PwshUpdateScript = fmt.Sprintf(defaultPwshUpdateScriptFormat, p.config.PwshInstallerUri)
 	}
 
+	if "" == p.config.RebootCompleteCommand {
+		p.config.RebootCompleteCommand = defaultRebootCompleteCommand
+	}
+
+	if "" == p.config.RebootInitiateCommand {
+		p.config.RebootInitiateCommand = defaultRebootInitiateCommand
+	}
+
+	if "" == p.config.RebootValidateCommand {
+		p.config.RebootValidateCommand = defaultRebootValidateCommand
+	}
+
 	if "" == p.config.RemoteEnvVarPath {
 		p.config.RemoteEnvVarPath = fmt.Sprintf(defaultRemoteEnvVarPathFormat, uuid.TimeOrderedUUID())
 	}
@@ -180,17 +201,17 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 	return nil
 }
-func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicator packersdk.Communicator, generatedData map[string]interface{}) error {
+func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, communicator packersdk.Communicator, generatedData map[string]interface{}) error {
 	p.communicator = communicator
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	if e := p.updatePwshInstallation(ctx, ui); nil != e {
+	if e := p.updatePwshInstallation(context, ui); nil != e {
 		return e
 	} else if scripts, e := p.initializeScriptCollection(); nil != e {
 		return e
 	} else {
-		return p.executeScriptCollection(ctx, scripts, ui)
+		return p.executeScriptCollection(context, scripts, ui)
 	}
 }
 
@@ -265,6 +286,42 @@ func (p *Provisioner) initializeScriptCollection() ([]string, error) {
 		return scripts, nil
 	}
 }
+func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error { // TODO: Refactor to support arbitrary operating systems.
+	remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootInitiateCommand}
+
+	ui.Say(fmt.Sprintf("Initiating machine reboot; command: %s", p.config.RebootInitiateCommand))
+
+	e := remoteCmd.RunWithUi(ctx, p.communicator, ui)
+	exitCode := remoteCmd.ExitStatus()
+
+	if nil != e {
+		return e
+	} else if (0 != exitCode) && (1115 != exitCode) && (1190 == exitCode) {
+		return fmt.Errorf("Failed to reboot machine; exit code: %d", exitCode)
+	} else {
+		for {
+			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
+
+			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
+			exitCode = remoteCmd.ExitStatus()
+
+			if (nil != e) || (1 == exitCode) { // encountered error or SSH
+				break
+			} else if 0 == exitCode { // success; cancel pending shutdown
+				remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
+				remoteCmd.RunWithUi(ctx, p.communicator, ui)
+
+				break
+			} else if (1115 == exitCode) || (1190 == exitCode) || (1717 == exitCode) { // waiting on pending reboot
+				time.Sleep(13 * time.Second)
+			}
+		}
+
+		ui.Say(fmt.Sprintf("Completed machine reboot; exit code: %d", exitCode))
+
+		return nil
+	}
+}
 func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
 	if "" != p.config.PwshInstallerUri {
 		remotePath := p.config.RemotePwshUpdatePath
@@ -320,6 +377,11 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 
 					if e = os.Remove(scriptFileHandle.Name()); nil != e {
 						return fmt.Errorf(pwshScriptRemovingErrorFormat, e)
+					}
+
+					// TODO: Implement reboot check.
+					if true {
+						p.rebootMachine(context, ui)
 					}
 				}
 			}
