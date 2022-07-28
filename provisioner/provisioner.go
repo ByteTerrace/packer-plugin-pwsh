@@ -380,9 +380,13 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 					}
 
 					// TODO: Implement reboot check.
-					//if true {
-					//	p.rebootMachine(context, ui)
-					//}
+					if true {
+						if e = p.rebootMachine(context, ui); nil != e {
+							return e
+						} else {
+							time.Sleep(13 * time.Second)
+						}
+					}
 				}
 			}
 		}
