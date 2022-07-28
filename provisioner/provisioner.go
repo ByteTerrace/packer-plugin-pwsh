@@ -203,15 +203,7 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scripts [
 	} else {
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-		if e = p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui); nil != e {
-			return e
-		} else {
-			if len(scripts) != len(p.config.Scripts) { // Delete inline script, if exists.
-				return os.Remove(scripts[0])
-			} else {
-				return nil
-			}
-		}
+		return p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui)
 	}
 }
 func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
