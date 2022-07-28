@@ -181,66 +181,36 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	return nil
 }
 func (p *Provisioner) Provision(ctx context.Context, ui packersdk.Ui, communicator packersdk.Communicator, generatedData map[string]interface{}) error {
-	var remotePath string
-
 	p.communicator = communicator
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	configuration := p.config
-	contextData := generatedData
-
-	// initialize script collection
-	inlineScriptFilePath, e := p.getInlineScriptFilePath(configuration.Inline)
-	scripts := make([]string, len(configuration.Scripts))
-
-	if nil != e {
+	if scripts, e := p.initializeScriptCollection(); nil != e {
 		return e
+	} else {
+		p.updatePwshInstallation(ctx, ui)
+
+		return p.executeScriptCollection(ctx, scripts, ui)
 	}
+}
 
-	if "" != inlineScriptFilePath {
-		defer os.Remove(inlineScriptFilePath)
+func (p *Provisioner) executeScriptCollection(context context.Context, scripts []string, ui packersdk.Ui) error {
+	remotePath := p.config.RemotePath
 
-		scripts = append(scripts, inlineScriptFilePath)
-	}
+	p.generatedData["Path"] = remotePath
 
-	copy(scripts, configuration.Scripts)
-
-	// update PowerShell installation
-	if "" != configuration.PwshInstallerUri {
-		remotePath = configuration.RemotePwshUpdatePath
-		contextData["Path"] = remotePath
-
-		if command, e := interpolate.Render(configuration.PwshUpdateCommand, &configuration.ctx); nil != e {
-			return e
-		} else {
-			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
-
-			if updateScriptPath, e := p.getInlineScriptFilePath([]string{configuration.PwshUpdateScript}); nil != e {
-				return e
-			} else if e = p.uploadAndExecuteScripts(command, ctx, remotePath, ([]string{updateScriptPath}), ui); nil != e {
-				return e
-			}
-		}
-	}
-
-	// execute script collection
-	remotePath = configuration.RemotePath
-	contextData["Path"] = remotePath
-
-	if command, e := interpolate.Render(configuration.ExecuteCommand, &configuration.ctx); nil != e {
+	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
 	} else {
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
-		if e = p.uploadAndExecuteScripts(command, ctx, remotePath, scripts, ui); nil != e {
+		if e = p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui); nil != e {
 			return e
 		}
 	}
 
 	return nil
 }
-
 func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
 	if (nil == lines) || (0 == len(lines)) {
 		return "", nil
@@ -288,6 +258,45 @@ func (p *Provisioner) getUploadAndExecuteScriptFunc(command string, remotePath s
 			return nil
 		}
 	}
+}
+func (p *Provisioner) initializeScriptCollection() ([]string, error) {
+	inlineScriptFilePath, e := p.getInlineScriptFilePath(p.config.Inline)
+	scripts := make([]string, len(p.config.Scripts))
+
+	if nil != e {
+		return nil, e
+	}
+
+	if "" != inlineScriptFilePath {
+		defer os.Remove(inlineScriptFilePath)
+
+		scripts = append(scripts, inlineScriptFilePath)
+	}
+
+	copy(scripts, p.config.Scripts)
+
+	return scripts, nil
+}
+func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
+	if "" != p.config.PwshInstallerUri {
+		remotePath := p.config.RemotePwshUpdatePath
+
+		p.generatedData["Path"] = remotePath
+
+		if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
+			return e
+		} else {
+			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
+
+			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshUpdateScript}); nil != e {
+				return e
+			} else if e = p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui); nil != e {
+				return e
+			}
+		}
+	}
+
+	return nil
 }
 func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, remotePath string, scripts []string, ui packersdk.Ui) error {
 	for _, path := range scripts {
