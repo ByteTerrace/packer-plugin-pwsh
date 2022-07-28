@@ -77,7 +77,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultPwshUpdateScript string
 	var defaultRemoteEnvVarPathFormat string
 	var defaultRemotePathFormat string
-	var defaultRemotePwshUpdatePath string
+	var defaultRemotePwshUpdatePathFormat string
 
 	switch runtime.GOOS {
 	case "linux":
@@ -89,7 +89,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript = ""
 		defaultRemoteEnvVarPathFormat = `/tmp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
-		defaultRemotePwshUpdatePath = `/tmp/packer-pwsh-installer-%s.sh`
+		defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
 	case "windows":
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
@@ -109,7 +109,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScript += "}\n"
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
-		defaultRemotePwshUpdatePath = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
+		defaultRemotePwshUpdatePathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
 	default:
 		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
 	}
@@ -151,7 +151,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.RemotePwshUpdatePath {
-		p.config.PwshUpdateCommand = defaultRemotePwshUpdatePath
+		p.config.PwshUpdateCommand = fmt.Sprintf(defaultRemotePwshUpdatePathFormat, uuid.TimeOrderedUUID())
 	}
 
 	if nil == p.config.Scripts {
