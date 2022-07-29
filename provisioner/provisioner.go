@@ -39,8 +39,10 @@ type Config struct {
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
 	ElevatedEnvVarFormat  string `mapstructure:"elevated_env_var_format"`
+	IsRebootEnabled       bool   `mapstructure:"is_reboot_enabled"`
 	PwshInstallerUri      string `mapstructure:"pwsh_installer_uri"`
 	PwshUpdateCommand     string `mapstructure:"pwsh_update_command"`
+	PwshUpdateIsDisabled  bool   `mapstructure:"pwsh_update_is_disabled"`
 	PwshUpdateScript      string `mapstructure:"pwsh_update_script"`
 	RebootCompleteCommand string `mapstructure:"reboot_complete_command"`
 	RebootInitiateCommand string `mapstructure:"reboot_initiate_command"`
@@ -206,9 +208,13 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	/*if e := p.updatePwshInstallation(context, ui); nil != e {
-		return e
-	} else */if scripts, e := p.initializeScriptCollection(); nil != e {
+	if !p.config.PwshUpdateIsDisabled {
+		if e := p.updatePwshInstallation(context, ui); nil != e {
+			return e
+		}
+	}
+
+	if scripts, e := p.initializeScriptCollection(); nil != e {
 		return e
 	} else {
 		return p.executeScriptCollection(context, scripts, ui)
@@ -305,7 +311,6 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 				remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
 
 				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
-					ui.Say("break; e")
 					break
 				} else {
 					exitCode = remoteCmd.ExitStatus()
@@ -313,26 +318,21 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 					if 0 == exitCode {
 						remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
 						remoteCmd.RunWithUi(ctx, p.communicator, ui)
-						exitCode = remoteCmd.ExitStatus()
-						ui.Say("break; 0")
+
 						break
 					} else if 1 == exitCode {
-						ui.Say("break; 1")
 						break
 					} else if (1115 == exitCode) || (1117 == exitCode) || (1190 == exitCode) {
 						time.Sleep(13 * time.Second)
-						ui.Say("sleep")
 					}
 				}
 			}
 
-			ui.Say(fmt.Sprintf("Completed machine reboot; exit code: %d", exitCode))
-
-			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootValidateCommand}
-
 			ui.Say(fmt.Sprintf("Validating machine reboot; command: %s", p.config.RebootValidateCommand))
 
 			for {
+				remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootValidateCommand}
+
 				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
 					return e
 				} else {
@@ -346,7 +346,7 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 				}
 			}
 
-			ui.Say(fmt.Sprintf("Validated machine reboot; exit code: %d", exitCode))
+			ui.Say(fmt.Sprintf("Completed machine reboot; exit code: %d", exitCode))
 
 			return nil
 		}
@@ -408,15 +408,14 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 					if e = os.Remove(scriptFileHandle.Name()); nil != e {
 						return fmt.Errorf(pwshScriptRemovingErrorFormat, e)
 					}
-
-					// TODO: Implement reboot check.
-					if true {
-						if e = p.rebootMachine(context, ui); nil != e {
-							return e
-						}
-					}
 				}
 			}
+		}
+	}
+
+	if p.config.IsRebootEnabled {
+		if e := p.rebootMachine(context, ui); nil != e {
+			return e
 		}
 	}
 
