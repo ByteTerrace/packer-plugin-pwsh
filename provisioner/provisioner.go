@@ -206,9 +206,9 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	if e := p.updatePwshInstallation(context, ui); nil != e {
+	/*if e := p.updatePwshInstallation(context, ui); nil != e {
 		return e
-	} else if scripts, e := p.initializeScriptCollection(); nil != e {
+	} else */if scripts, e := p.initializeScriptCollection(); nil != e {
 		return e
 	} else {
 		return p.executeScriptCollection(context, scripts, ui)
@@ -295,17 +295,17 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 
 	if nil != e {
 		return e
-	} else if (0 != exitCode) && (1115 != exitCode) && (1190 == exitCode) {
+	} else if 0 != exitCode {
 		return fmt.Errorf("Failed to reboot machine; exit code: %d", exitCode)
 	} else {
-		for {
-			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
-			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
-			exitCode = remoteCmd.ExitStatus()
+		remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
 
-			if nil != e {
-				break
+		for {
+			if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
+				return e
 			} else {
+				exitCode = remoteCmd.ExitStatus()
+
 				if 0 == exitCode {
 					remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
 					remoteCmd.RunWithUi(ctx, p.communicator, ui)
@@ -313,7 +313,7 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 					break
 				} else if 1 == exitCode {
 					break
-				} else if (1115 == exitCode) || (1117 == exitCode) || (1119 == exitCode) {
+				} else if (1115 == exitCode) || (1117 == exitCode) || (1190 == exitCode) {
 					time.Sleep(13 * time.Second)
 				} else {
 					return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
@@ -328,12 +328,11 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 		ui.Say(fmt.Sprintf("Validating machine reboot; command: %s", p.config.RebootValidateCommand))
 
 		for {
-			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
-			exitCode = remoteCmd.ExitStatus()
-
-			if nil != e {
+			if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
 				return e
 			} else {
+				exitCode = remoteCmd.ExitStatus()
+
 				if 0 == exitCode {
 					break
 				} else {
