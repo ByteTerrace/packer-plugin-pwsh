@@ -146,6 +146,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultRebootPendingCommand += "$systemNetLogonProperties = (Get-Item -Path 'HKLM:/SYSTEM/CurrentControlSet/Services/Netlogon').Property;"
 		defaultRebootPendingCommand += "$isRebootPending = ((Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Component Based Servicing').Property -contains 'RebootPending');"
 		defaultRebootPendingCommand += "$isRebootPending = (((Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/WindowsUpdate/Auto Update').Property -contains 'RebootRequired') -or $isRebootPending);"
+		defaultRebootPendingCommand += "$isRebootPending = (((Get-Item -Path 'HKLM:/System/CurrentControlSet/Control/Session Manager').Property -contains 'PendingFileRenameOperations') -or $isRebootPending);"
 		defaultRebootPendingCommand += "$isRebootPending = (($activeComputerName -ne $pendingComputerName) -or $isRebootPending);"
 		defaultRebootPendingCommand += "$isRebootPending = (($systemNetLogonProperties -contains 'AvoidSpnSet') -or ($systemNetLogonProperties -contains 'JoinDomain') -or $isRebootPending)"
 		defaultRebootPendingCommand += "exit $isRebootPending;"
