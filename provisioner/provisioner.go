@@ -305,7 +305,7 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 
 			for {
 				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
-					return e
+					break
 				} else {
 					exitCode = remoteCmd.ExitStatus()
 
@@ -319,7 +319,7 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 					} else if (1115 == exitCode) || (1117 == exitCode) || (1190 == exitCode) {
 						time.Sleep(13 * time.Second)
 					} else {
-						return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
+						ui.Say(fmt.Sprintf("Unhandled exit code during machien reboot: %d", exitCode))
 					}
 				}
 			}
