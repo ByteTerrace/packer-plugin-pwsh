@@ -29,13 +29,13 @@ type FlatConfig struct {
 	RemotePath            *string           `mapstructure:"remote_path" cty:"remote_path" hcl:"remote_path"`
 	ExecuteCommand        *string           `mapstructure:"execute_command" cty:"execute_command" hcl:"execute_command"`
 	ElevatedEnvVarFormat  *string           `mapstructure:"elevated_env_var_format" cty:"elevated_env_var_format" hcl:"elevated_env_var_format"`
-	IsRebootEnabled       *bool             `mapstructure:"is_reboot_enabled" cty:"is_reboot_enabled" hcl:"is_reboot_enabled"`
 	PwshInstallerUri      *string           `mapstructure:"pwsh_installer_uri" cty:"pwsh_installer_uri" hcl:"pwsh_installer_uri"`
 	PwshUpdateCommand     *string           `mapstructure:"pwsh_update_command" cty:"pwsh_update_command" hcl:"pwsh_update_command"`
 	PwshUpdateIsDisabled  *bool             `mapstructure:"pwsh_update_is_disabled" cty:"pwsh_update_is_disabled" hcl:"pwsh_update_is_disabled"`
 	PwshUpdateScript      *string           `mapstructure:"pwsh_update_script" cty:"pwsh_update_script" hcl:"pwsh_update_script"`
 	RebootCompleteCommand *string           `mapstructure:"reboot_complete_command" cty:"reboot_complete_command" hcl:"reboot_complete_command"`
 	RebootInitiateCommand *string           `mapstructure:"reboot_initiate_command" cty:"reboot_initiate_command" hcl:"reboot_initiate_command"`
+	RebootPendingCommand  *string           `mapstructure:"reboot_pending_command" cty:"reboot_pending_command" hcl:"reboot_pending_command"`
 	RebootValidateCommand *string           `mapstructure:"reboot_validate_command" cty:"reboot_validate_command" hcl:"reboot_validate_command"`
 	RemoteEnvVarPath      *string           `mapstructure:"remote_env_var_path" cty:"remote_env_var_path" hcl:"remote_env_var_path"`
 	RemotePwshUpdatePath  *string           `mapstructure:"remote_pwsh_update_path" cty:"remote_pwsh_update_path" hcl:"remote_pwsh_update_path"`
@@ -72,13 +72,13 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"remote_path":                &hcldec.AttrSpec{Name: "remote_path", Type: cty.String, Required: false},
 		"execute_command":            &hcldec.AttrSpec{Name: "execute_command", Type: cty.String, Required: false},
 		"elevated_env_var_format":    &hcldec.AttrSpec{Name: "elevated_env_var_format", Type: cty.String, Required: false},
-		"is_reboot_enabled":          &hcldec.AttrSpec{Name: "is_reboot_enabled", Type: cty.Bool, Required: false},
 		"pwsh_installer_uri":         &hcldec.AttrSpec{Name: "pwsh_installer_uri", Type: cty.String, Required: false},
 		"pwsh_update_command":        &hcldec.AttrSpec{Name: "pwsh_update_command", Type: cty.String, Required: false},
 		"pwsh_update_is_disabled":    &hcldec.AttrSpec{Name: "pwsh_update_is_disabled", Type: cty.Bool, Required: false},
 		"pwsh_update_script":         &hcldec.AttrSpec{Name: "pwsh_update_script", Type: cty.String, Required: false},
 		"reboot_complete_command":    &hcldec.AttrSpec{Name: "reboot_complete_command", Type: cty.String, Required: false},
 		"reboot_initiate_command":    &hcldec.AttrSpec{Name: "reboot_initiate_command", Type: cty.String, Required: false},
+		"reboot_pending_command":     &hcldec.AttrSpec{Name: "reboot_pending_command", Type: cty.String, Required: false},
 		"reboot_validate_command":    &hcldec.AttrSpec{Name: "reboot_validate_command", Type: cty.String, Required: false},
 		"remote_env_var_path":        &hcldec.AttrSpec{Name: "remote_env_var_path", Type: cty.String, Required: false},
 		"remote_pwsh_update_path":    &hcldec.AttrSpec{Name: "remote_pwsh_update_path", Type: cty.String, Required: false},

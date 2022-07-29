@@ -39,13 +39,13 @@ type Config struct {
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
 	ElevatedEnvVarFormat  string `mapstructure:"elevated_env_var_format"`
-	IsRebootEnabled       bool   `mapstructure:"is_reboot_enabled"`
 	PwshInstallerUri      string `mapstructure:"pwsh_installer_uri"`
 	PwshUpdateCommand     string `mapstructure:"pwsh_update_command"`
 	PwshUpdateIsDisabled  bool   `mapstructure:"pwsh_update_is_disabled"`
 	PwshUpdateScript      string `mapstructure:"pwsh_update_script"`
 	RebootCompleteCommand string `mapstructure:"reboot_complete_command"`
 	RebootInitiateCommand string `mapstructure:"reboot_initiate_command"`
+	RebootPendingCommand  string `mapstructure:"reboot_pending_command"`
 	RebootValidateCommand string `mapstructure:"reboot_validate_command"`
 	RemoteEnvVarPath      string `mapstructure:"remote_env_var_path"`
 	RemotePwshUpdatePath  string `mapstructure:"remote_pwsh_update_path"`
@@ -87,6 +87,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultPwshUpdateCommand string
 	var defaultPwshUpdateScriptFormat string
 	var defaultRebootCompleteCommand string
+	var defaultRebootPendingCommand string
 	var defaultRebootInitiateCommand string
 	var defaultRebootValidateCommand string
 	var defaultRemoteEnvVarPathFormat string
@@ -123,6 +124,14 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScriptFormat += "}\n"
 		defaultRebootCompleteCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 		defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
+		defaultRebootPendingCommand = "$activeComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ActiveComputerName').ComputerName;"
+		defaultRebootPendingCommand += "$pendingComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ComputerName').ComputerName;"
+		defaultRebootPendingCommand += "$systemNetLogonProperties = (Get-Item -Path 'HKLM:/SYSTEM/CurrentControlSet/Services/Netlogon').Property;"
+		defaultRebootPendingCommand += "$isRebootPending = ((Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Component Based Servicing').Property -contains 'RebootPending');"
+		defaultRebootPendingCommand += "$isRebootPending = (((Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/WindowsUpdate/Auto Update').Property -contains 'RebootRequired') -or $isRebootPending);"
+		defaultRebootPendingCommand += "$isRebootPending = (($activeComputerName -ne $pendingComputerName) -or $isRebootPending);"
+		defaultRebootPendingCommand += "$isRebootPending = (($systemNetLogonProperties -contains 'AvoidSpnSet') -or ($systemNetLogonProperties -contains 'JoinDomain') -or $isRebootPending)"
+		defaultRebootPendingCommand += "exit $isRebootPending;"
 		defaultRebootValidateCommand = `powershell -Command "exit 0;" -ExecutionPolicy "Bypass"`
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
 		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
@@ -408,14 +417,22 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 					if e = os.Remove(scriptFileHandle.Name()); nil != e {
 						return fmt.Errorf(pwshScriptRemovingErrorFormat, e)
 					}
+
+					ui.Say("Checking for pending reboot...")
+
+					remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootPendingCommand}
+
+					if e = remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
+						return e
+					} else {
+						if 1 == remoteCmd.ExitStatus() {
+							if e = p.rebootMachine(context, ui); nil != e {
+								return e
+							}
+						}
+					}
 				}
 			}
-		}
-	}
-
-	if p.config.IsRebootEnabled {
-		if e := p.rebootMachine(context, ui); nil != e {
-			return e
 		}
 	}
 
