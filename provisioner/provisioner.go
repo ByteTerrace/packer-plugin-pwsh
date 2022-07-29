@@ -221,7 +221,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Vars = make([]string, 0)
 	}
 
-	if ("" == p.config.ElevatedUser) && ("" != p.config.ElevatedPassword) {
+	if ("" != p.config.ElevatedPassword) && ("" == p.config.ElevatedUser) {
 		e = packersdk.MultiErrorAppend(e, errors.New("Must supply the 'elevated_user' parameter if 'elevated_password' is provided."))
 	}
 
@@ -265,7 +265,9 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scripts [
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
 		if "" != p.config.ElevatedUser {
-			command, e = guestexec.GenerateElevatedRunner(command, p)
+			if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
+				return e
+			}
 		}
 
 		return p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui)
