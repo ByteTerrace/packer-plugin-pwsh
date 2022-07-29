@@ -301,9 +301,9 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 		} else {
 			ui.Say(fmt.Sprintf("Waiting for machine reboot; command: %s", p.config.RebootCompleteCommand))
 
-			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
-
 			for {
+				remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
+
 				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
 					ui.Say("break; e")
 					break
