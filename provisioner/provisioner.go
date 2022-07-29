@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer-plugin-sdk/guestexec"
 	"github.com/hashicorp/packer-plugin-sdk/retry"
 	"github.com/hashicorp/packer-plugin-sdk/shell"
 	"github.com/hashicorp/packer-plugin-sdk/template/config"
@@ -38,17 +39,20 @@ type Config struct {
 	shell.Provisioner               `mapstructure:",squash"`
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
-	ElevatedEnvVarFormat  string `mapstructure:"elevated_env_var_format"`
-	PwshInstallerUri      string `mapstructure:"pwsh_installer_uri"`
-	PwshUpdateCommand     string `mapstructure:"pwsh_update_command"`
-	PwshUpdateIsDisabled  bool   `mapstructure:"pwsh_update_is_disabled"`
-	PwshUpdateScript      string `mapstructure:"pwsh_update_script"`
-	RebootCompleteCommand string `mapstructure:"reboot_complete_command"`
-	RebootInitiateCommand string `mapstructure:"reboot_initiate_command"`
-	RebootPendingCommand  string `mapstructure:"reboot_pending_command"`
-	RebootValidateCommand string `mapstructure:"reboot_validate_command"`
-	RemoteEnvVarPath      string `mapstructure:"remote_env_var_path"`
-	RemotePwshUpdatePath  string `mapstructure:"remote_pwsh_update_path"`
+	ElevatedEnvVarFormat   string `mapstructure:"elevated_env_var_format"`
+	ElevatedExecuteCommand string `mapstructure:"elevated_execute_command"`
+	ElevatedUser           string `mapstructure:"elevated_user"`
+	ElevatedPassword       string `mapstructure:"elevated_password"`
+	PwshInstallerUri       string `mapstructure:"pwsh_installer_uri"`
+	PwshUpdateCommand      string `mapstructure:"pwsh_update_command"`
+	PwshUpdateIsDisabled   bool   `mapstructure:"pwsh_update_is_disabled"`
+	PwshUpdateScript       string `mapstructure:"pwsh_update_script"`
+	RebootCompleteCommand  string `mapstructure:"reboot_complete_command"`
+	RebootInitiateCommand  string `mapstructure:"reboot_initiate_command"`
+	RebootPendingCommand   string `mapstructure:"reboot_pending_command"`
+	RebootValidateCommand  string `mapstructure:"reboot_validate_command"`
+	RemoteEnvVarPath       string `mapstructure:"remote_env_var_path"`
+	RemotePwshUpdatePath   string `mapstructure:"remote_pwsh_update_path"`
 
 	ctx interpolate.Context
 }
@@ -58,7 +62,19 @@ type Provisioner struct {
 	generatedData map[string]interface{}
 }
 
+func (p *Provisioner) Communicator() packersdk.Communicator {
+	return p.communicator
+}
 func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
+func (p *Provisioner) ElevatedUser() string {
+	return p.config.ElevatedUser
+}
+func (p *Provisioner) ElevatedPassword() string {
+	p.config.ctx.Data = p.generatedData
+	elevatedPassword, _ := interpolate.Render(p.config.ElevatedPassword, &p.config.ctx)
+
+	return elevatedPassword
+}
 func (p *Provisioner) Prepare(raws ...interface{}) error {
 	e := config.Decode(
 		&p.config,
@@ -68,6 +84,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			InterpolateContext: &p.config.ctx,
 			InterpolateFilter: &interpolate.RenderFilter{
 				Exclude: []string{
+					"elevated_execute_command",
 					"execute_command",
 				},
 			},
@@ -144,6 +161,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.ElevatedEnvVarFormat = defaultElevatedEnvVarFormat
 	}
 
+	if "" == p.config.ElevatedExecuteCommand {
+		p.config.ElevatedExecuteCommand = defaultExecuteCommand
+	}
+
 	if "" == p.config.EnvVarFormat {
 		p.config.EnvVarFormat = defaultEnvVarFormat
 	}
@@ -200,6 +221,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Vars = make([]string, 0)
 	}
 
+	if ("" == p.config.ElevatedUser) && ("" != p.config.ElevatedPassword) {
+		e = packersdk.MultiErrorAppend(e, errors.New("Must supply the 'elevated_user' parameter if 'elevated_password' is provided."))
+	}
+
 	if (nil == p.config.Inline) && (0 == len(p.config.Scripts)) {
 		e = packersdk.MultiErrorAppend(e, errors.New("Either a script file or an inline script must be specified."))
 	} else if (nil != p.config.Inline) && (0 < len(p.config.Scripts)) {
@@ -238,6 +263,10 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scripts [
 		return e
 	} else {
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
+
+		if "" != p.config.ElevatedUser {
+			command, e = guestexec.GenerateElevatedRunner(command, p)
+		}
 
 		return p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui)
 	}
