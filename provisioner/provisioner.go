@@ -290,59 +290,64 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 	ui.Say(fmt.Sprintf("Initiating machine reboot; command: %s", p.config.RebootInitiateCommand))
 
 	remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootInitiateCommand}
-	e := remoteCmd.RunWithUi(ctx, p.communicator, ui)
-	exitCode := remoteCmd.ExitStatus()
 
-	if nil != e {
+	if e := remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
 		return e
-	} else if 0 != exitCode {
-		return fmt.Errorf("Failed to reboot machine; exit code: %d", exitCode)
 	} else {
-		remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
+		exitCode := remoteCmd.ExitStatus()
 
-		for {
-			if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
-				return e
-			} else {
-				exitCode = remoteCmd.ExitStatus()
+		if 0 != exitCode {
+			return fmt.Errorf("Failed to reboot machine; exit code: %d", exitCode)
+		} else {
+			ui.Say(fmt.Sprintf("Waiting for machine reboot; command: %s", p.config.RebootCompleteCommand))
 
-				if 0 == exitCode {
-					remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
-					remoteCmd.RunWithUi(ctx, p.communicator, ui)
+			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
 
-					break
-				} else if 1 == exitCode {
-					break
-				} else if (1115 == exitCode) || (1117 == exitCode) || (1190 == exitCode) {
-					time.Sleep(13 * time.Second)
+			for {
+				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
+					return e
 				} else {
-					return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
+					exitCode = remoteCmd.ExitStatus()
+
+					if 0 == exitCode {
+						remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
+						remoteCmd.RunWithUi(ctx, p.communicator, ui)
+
+						break
+					} else if 1 == exitCode {
+						break
+					} else if (1115 == exitCode) || (1117 == exitCode) || (1190 == exitCode) {
+						time.Sleep(13 * time.Second)
+					} else {
+						return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
+					}
 				}
 			}
-		}
 
-		ui.Say(fmt.Sprintf("Completed machine reboot; exit code: %d", exitCode))
+			ui.Say(fmt.Sprintf("Completed machine reboot; exit code: %d", exitCode))
 
-		remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootValidateCommand}
+			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootValidateCommand}
 
-		ui.Say(fmt.Sprintf("Validating machine reboot; command: %s", p.config.RebootValidateCommand))
+			ui.Say(fmt.Sprintf("Validating machine reboot; command: %s", p.config.RebootValidateCommand))
 
-		for {
-			if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
-				return e
-			} else {
-				exitCode = remoteCmd.ExitStatus()
-
-				if 0 == exitCode {
-					break
+			for {
+				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
+					return e
 				} else {
-					time.Sleep(13 * time.Second)
+					exitCode = remoteCmd.ExitStatus()
+
+					if 0 == exitCode {
+						break
+					} else {
+						time.Sleep(13 * time.Second)
+					}
 				}
 			}
-		}
 
-		ui.Say(fmt.Sprintf("Validated machine reboot; exit code: %d", exitCode))
-		return nil
+			ui.Say(fmt.Sprintf("Validated machine reboot; exit code: %d", exitCode))
+
+			return nil
+		}
 	}
 }
 func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
