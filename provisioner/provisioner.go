@@ -119,7 +119,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshUpdateScriptFormat += "finally {\n"
 		defaultPwshUpdateScriptFormat += "    exit $exitCode;\n"
 		defaultPwshUpdateScriptFormat += "}\n"
-		defaultRebootCompleteCommand = `shutdown /r /f /t 0 /c "packer reboot test"`
+		defaultRebootCompleteCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 		defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
 		defaultRebootValidateCommand = `powershell -Command "exit 0;" -ExecutionPolicy "Bypass"`
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
@@ -287,10 +287,9 @@ func (p *Provisioner) initializeScriptCollection() ([]string, error) {
 	}
 }
 func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error { // TODO: Refactor to support arbitrary operating systems.
-	remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootInitiateCommand}
-
 	ui.Say(fmt.Sprintf("Initiating machine reboot; command: %s", p.config.RebootInitiateCommand))
 
+	remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootInitiateCommand}
 	e := remoteCmd.RunWithUi(ctx, p.communicator, ui)
 	exitCode := remoteCmd.ExitStatus()
 
@@ -299,34 +298,24 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 	} else if (0 != exitCode) && (1115 != exitCode) && (1190 == exitCode) {
 		return fmt.Errorf("Failed to reboot machine; exit code: %d", exitCode)
 	} else {
-	ForLoop:
 		for {
 			remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
 			e = remoteCmd.RunWithUi(ctx, p.communicator, ui)
 			exitCode = remoteCmd.ExitStatus()
 
 			if nil != e {
-				break ForLoop
+				break
 			} else {
-			SwitchBlock:
-				switch exitCode {
-				// success (WinRM)
-				case 0:
+				if 0 == exitCode {
 					remoteCmd = &packersdk.RemoteCmd{Command: `shutdown /a`}
 					remoteCmd.RunWithUi(ctx, p.communicator, ui)
 
-					break ForLoop
-				// success (SSH)
-				case 1:
-					break ForLoop
-				// waiting on pending reboot
-				case 1115:
-				case 1117:
-				case 1190:
+					break
+				} else if 1 == exitCode {
+					break
+				} else if (1115 == exitCode) || (1117 == exitCode) || (1119 == exitCode) {
 					time.Sleep(13 * time.Second)
-					break SwitchBlock
-				// unhandled exit code
-				default:
+				} else {
 					return fmt.Errorf("Failed machine reboot; exit code: %d", exitCode)
 				}
 			}
