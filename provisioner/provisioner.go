@@ -39,6 +39,8 @@ type Config struct {
 	shell.Provisioner               `mapstructure:",squash"`
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
+	CloudDetectionCommand              string `mapstructure:"cloud_detection_command"`
+	CloudDetectionIsEnabled            bool   `mapstructure:"cloud_detection_is_enabled"`
 	ElevatedEnvVarFormat               string `mapstructure:"elevated_env_var_format"`
 	ElevatedExecuteCommand             string `mapstructure:"elevated_execute_command"`
 	ElevatedUser                       string `mapstructure:"elevated_user"`
@@ -98,6 +100,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		return e
 	}
 
+	var defaultCloudDetectionCommand string
 	var defaultElevatedEnvVarFormat string
 	var defaultEnvVarFormat string
 	var defaultExecuteCommand string
@@ -124,6 +127,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	//	defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
 	//	defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
 	case "windows":
+		defaultCloudDetectionCommand = "$ErrorActionPreference = [Management.Automation.ActionPreference]::SilentlyContinue;\n"
+		defaultCloudDetectionCommand += "$cloudProvider = 'Unknown';\n"
+		defaultCloudDetectionCommand += "try {\n"
+		defaultCloudDetectionCommand += "    if ($null -ne (Invoke-WebRequest -Method 'GET' -NoProxy -Uri 'http://169.254.169.254/latest/meta-data/')) { $cloudProvider = 'Amazon Compute'; }\n"
+		defaultCloudDetectionCommand += "    elseif ($null -ne (Invoke-WebRequest -Headers @{ Metadata = 'true'; } -Method 'GET' -NoProxy -Uri 'http://169.254.169.254/metadata/instance?api-version=2021-02-01')) { $cloudProvider = 'Microsoft Azure'; }\n"
+		defaultCloudDetectionCommand += "    elseif ($null -ne (Invoke-WebRequest -Headers @{ 'Metadata-Flavor' = 'Google'; } -Method 'GET' -NoProxy -Uri 'http://metadata.google.internal/computeMetadata/v1')) { $cloudProvider = 'Google Compute'; }\n"
+		defaultCloudDetectionCommand += "    New-Item -Force -Path 'HKCU:/Software/Packer/Plugins/pwsh' | Out-Null;\n"
+		defaultCloudDetectionCommand += "    New-ItemProperty -Force -Name 'CloudProvider' -Path 'HKCU:/Software/Packer/Plugins/pwsh' -Value $cloudProvider | Out-Null;\n"
+		defaultCloudDetectionCommand += "}\n"
+		defaultCloudDetectionCommand += "finally {\n"
+		defaultCloudDetectionCommand += "    exit 0;\n"
+		defaultCloudDetectionCommand += "}\n"
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
 		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
@@ -160,6 +175,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultRemoteScriptPathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
 	default:
 		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
+	}
+
+	if "" == p.config.CloudDetectionCommand {
+		p.config.CloudDetectionCommand = defaultCloudDetectionCommand
 	}
 
 	if "" == p.config.ElevatedEnvVarFormat {
@@ -259,6 +278,12 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 		}
 	}
 
+	if p.config.CloudDetectionIsEnabled {
+		if e := p.detectCloudProvider(context, ui); nil != e {
+			return e
+		}
+	}
+
 	if scripts, e := p.initializeScriptCollection(); nil != e {
 		return e
 	} else {
@@ -274,6 +299,19 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 	}
 }
 
+func (p *Provisioner) detectCloudProvider(context context.Context, ui packersdk.Ui) error {
+	if "" != p.config.CloudDetectionCommand {
+		ui.Say("Detecting cloud provider...")
+
+		remoteCmd := &packersdk.RemoteCmd{Command: p.config.CloudDetectionCommand}
+
+		if e := remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
+			return e
+		}
+	}
+
+	return nil
+}
 func (p *Provisioner) executeScriptCollection(context context.Context, scripts []string, ui packersdk.Ui) error {
 	remotePath := p.config.RemotePath
 	p.generatedData["Path"] = remotePath

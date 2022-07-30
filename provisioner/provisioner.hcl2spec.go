@@ -28,6 +28,8 @@ type FlatConfig struct {
 	Binary                             *bool             `cty:"binary" hcl:"binary"`
 	RemotePath                         *string           `mapstructure:"remote_path" cty:"remote_path" hcl:"remote_path"`
 	ExecuteCommand                     *string           `mapstructure:"execute_command" cty:"execute_command" hcl:"execute_command"`
+	CloudDetectionCommand              *string           `mapstructure:"cloud_detection_command" cty:"cloud_detection_command" hcl:"cloud_detection_command"`
+	CloudDetectionIsEnabled            *bool             `mapstructure:"cloud_detection_is_enabled" cty:"cloud_detection_is_enabled" hcl:"cloud_detection_is_enabled"`
 	ElevatedEnvVarFormat               *string           `mapstructure:"elevated_env_var_format" cty:"elevated_env_var_format" hcl:"elevated_env_var_format"`
 	ElevatedExecuteCommand             *string           `mapstructure:"elevated_execute_command" cty:"elevated_execute_command" hcl:"elevated_execute_command"`
 	ElevatedUser                       *string           `mapstructure:"elevated_user" cty:"elevated_user" hcl:"elevated_user"`
@@ -76,6 +78,8 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"binary":                     &hcldec.AttrSpec{Name: "binary", Type: cty.Bool, Required: false},
 		"remote_path":                &hcldec.AttrSpec{Name: "remote_path", Type: cty.String, Required: false},
 		"execute_command":            &hcldec.AttrSpec{Name: "execute_command", Type: cty.String, Required: false},
+		"cloud_detection_command":    &hcldec.AttrSpec{Name: "cloud_detection_command", Type: cty.String, Required: false},
+		"cloud_detection_is_enabled": &hcldec.AttrSpec{Name: "cloud_detection_is_enabled", Type: cty.Bool, Required: false},
 		"elevated_env_var_format":    &hcldec.AttrSpec{Name: "elevated_env_var_format", Type: cty.String, Required: false},
 		"elevated_execute_command":   &hcldec.AttrSpec{Name: "elevated_execute_command", Type: cty.String, Required: false},
 		"elevated_user":              &hcldec.AttrSpec{Name: "elevated_user", Type: cty.String, Required: false},
