@@ -39,21 +39,22 @@ type Config struct {
 	shell.Provisioner               `mapstructure:",squash"`
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
-	ElevatedEnvVarFormat         string `mapstructure:"elevated_env_var_format"`
-	ElevatedExecuteCommand       string `mapstructure:"elevated_execute_command"`
-	ElevatedUser                 string `mapstructure:"elevated_user"`
-	ElevatedPassword             string `mapstructure:"elevated_password"`
-	PostProvisionRebootIsEnabled bool   `mapstructure:"post_provision_reboot_is_enabled"`
-	PwshAutoUpdateCommand        string `mapstructure:"pwsh_autoupdate_command"`
-	PwshAutoUpdateIsEnabled      bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
-	PwshAutoUpdateScript         string `mapstructure:"pwsh_autoupdate_script"`
-	PwshInstallerUri             string `mapstructure:"pwsh_installer_uri"`
-	RebootCompleteCommand        string `mapstructure:"reboot_complete_command"`
-	RebootInitiateCommand        string `mapstructure:"reboot_initiate_command"`
-	RebootPendingCommand         string `mapstructure:"reboot_pending_command"`
-	RebootValidateCommand        string `mapstructure:"reboot_validate_command"`
-	RemoteEnvVarPath             string `mapstructure:"remote_env_var_path"`
-	RemotePwshUpdatePath         string `mapstructure:"remote_pwsh_update_path"`
+	ElevatedEnvVarFormat               string `mapstructure:"elevated_env_var_format"`
+	ElevatedExecuteCommand             string `mapstructure:"elevated_execute_command"`
+	ElevatedUser                       string `mapstructure:"elevated_user"`
+	ElevatedPassword                   string `mapstructure:"elevated_password"`
+	PostScriptExecutionRebootIsEnabled bool   `mapstructure:"post_script_execution_reboot_is_enabled"`
+	PostProvisionRebootIsEnabled       bool   `mapstructure:"post_provision_reboot_is_enabled"`
+	PwshAutoUpdateCommand              string `mapstructure:"pwsh_autoupdate_command"`
+	PwshAutoUpdateIsEnabled            bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
+	PwshAutoUpdateScript               string `mapstructure:"pwsh_autoupdate_script"`
+	PwshInstallerUri                   string `mapstructure:"pwsh_installer_uri"`
+	RebootCompleteCommand              string `mapstructure:"reboot_complete_command"`
+	RebootInitiateCommand              string `mapstructure:"reboot_initiate_command"`
+	RebootPendingCommand               string `mapstructure:"reboot_pending_command"`
+	RebootValidateCommand              string `mapstructure:"reboot_validate_command"`
+	RemoteEnvVarPath                   string `mapstructure:"remote_env_var_path"`
+	RemotePwshAutoUpdatePath           string `mapstructure:"remote_pwsh_autoupdate_path"`
 
 	ctx interpolate.Context
 }
@@ -71,7 +72,6 @@ func (p *Provisioner) ElevatedUser() string {
 	return p.config.ElevatedUser
 }
 func (p *Provisioner) ElevatedPassword() string {
-	p.config.ctx.Data = p.generatedData
 	elevatedPassword, _ := interpolate.Render(p.config.ElevatedPassword, &p.config.ctx)
 
 	return elevatedPassword
@@ -214,8 +214,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.RemotePath = fmt.Sprintf(defaultRemoteScriptPathFormat, uuid.TimeOrderedUUID())
 	}
 
-	if "" == p.config.RemotePwshUpdatePath {
-		p.config.RemotePwshUpdatePath = fmt.Sprintf(defaultRemotePwshAutoUpdateScriptPathFormat, uuid.TimeOrderedUUID())
+	if "" == p.config.RemotePwshAutoUpdatePath {
+		p.config.RemotePwshAutoUpdatePath = fmt.Sprintf(defaultRemotePwshAutoUpdateScriptPathFormat, uuid.TimeOrderedUUID())
 	}
 
 	if nil == p.config.Scripts {
@@ -407,7 +407,7 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 }
 func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
 	if "" != p.config.PwshInstallerUri {
-		remotePath := p.config.RemotePwshUpdatePath
+		remotePath := p.config.RemotePwshAutoUpdatePath
 		p.generatedData["Path"] = remotePath
 
 		if command, e := interpolate.Render(p.config.PwshAutoUpdateCommand, &p.config.ctx); nil != e {
@@ -462,16 +462,18 @@ func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Co
 						return fmt.Errorf(pwshScriptRemovingErrorFormat, e)
 					}
 
-					ui.Say("Checking for pending reboot...")
+					if p.config.PostScriptExecutionRebootIsEnabled {
+						ui.Say("Checking for pending reboot...")
 
-					remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootPendingCommand}
+						remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootPendingCommand}
 
-					if e = remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
-						return e
-					} else {
-						if 1 == remoteCmd.ExitStatus() {
-							if e = p.rebootMachine(context, ui); nil != e {
-								return e
+						if e = remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
+							return e
+						} else {
+							if 1 == remoteCmd.ExitStatus() {
+								if e = p.rebootMachine(context, ui); nil != e {
+									return e
+								}
 							}
 						}
 					}
