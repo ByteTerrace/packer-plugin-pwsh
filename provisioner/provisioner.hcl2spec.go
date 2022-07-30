@@ -36,7 +36,6 @@ type FlatConfig struct {
 	PostScriptExecutionRebootIsEnabled *bool             `mapstructure:"post_script_execution_reboot_is_enabled" cty:"post_script_execution_reboot_is_enabled" hcl:"post_script_execution_reboot_is_enabled"`
 	PwshAutoUpdateCommand              *string           `mapstructure:"pwsh_autoupdate_command" cty:"pwsh_autoupdate_command" hcl:"pwsh_autoupdate_command"`
 	PwshAutoUpdateIsEnabled            *bool             `mapstructure:"pwsh_autoupdate_is_enabled" cty:"pwsh_autoupdate_is_enabled" hcl:"pwsh_autoupdate_is_enabled"`
-	PwshAutoUpdateScript               *string           `mapstructure:"pwsh_autoupdate_script" cty:"pwsh_autoupdate_script" hcl:"pwsh_autoupdate_script"`
 	PwshInstallerUri                   *string           `mapstructure:"pwsh_installer_uri" cty:"pwsh_installer_uri" hcl:"pwsh_installer_uri"`
 	RebootCompleteCommand              *string           `mapstructure:"reboot_complete_command" cty:"reboot_complete_command" hcl:"reboot_complete_command"`
 	RebootInitiateCommand              *string           `mapstructure:"reboot_initiate_command" cty:"reboot_initiate_command" hcl:"reboot_initiate_command"`
@@ -84,7 +83,6 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"post_script_execution_reboot_is_enabled": &hcldec.AttrSpec{Name: "post_script_execution_reboot_is_enabled", Type: cty.Bool, Required: false},
 		"pwsh_autoupdate_command":                 &hcldec.AttrSpec{Name: "pwsh_autoupdate_command", Type: cty.String, Required: false},
 		"pwsh_autoupdate_is_enabled":              &hcldec.AttrSpec{Name: "pwsh_autoupdate_is_enabled", Type: cty.Bool, Required: false},
-		"pwsh_autoupdate_script":                  &hcldec.AttrSpec{Name: "pwsh_autoupdate_script", Type: cty.String, Required: false},
 		"pwsh_installer_uri":                      &hcldec.AttrSpec{Name: "pwsh_installer_uri", Type: cty.String, Required: false},
 		"reboot_complete_command":                 &hcldec.AttrSpec{Name: "reboot_complete_command", Type: cty.String, Required: false},
 		"reboot_initiate_command":                 &hcldec.AttrSpec{Name: "reboot_initiate_command", Type: cty.String, Required: false},

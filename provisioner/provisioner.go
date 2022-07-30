@@ -47,7 +47,6 @@ type Config struct {
 	PostScriptExecutionRebootIsEnabled bool   `mapstructure:"post_script_execution_reboot_is_enabled"`
 	PwshAutoUpdateCommand              string `mapstructure:"pwsh_autoupdate_command"`
 	PwshAutoUpdateIsEnabled            bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
-	PwshAutoUpdateScript               string `mapstructure:"pwsh_autoupdate_script"`
 	PwshInstallerUri                   string `mapstructure:"pwsh_installer_uri"`
 	RebootCompleteCommand              string `mapstructure:"reboot_complete_command"`
 	RebootInitiateCommand              string `mapstructure:"reboot_initiate_command"`
@@ -101,8 +100,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultElevatedEnvVarFormat string
 	var defaultEnvVarFormat string
 	var defaultExecuteCommand string
-	var defaultPwshAutoUpdateCommand string
-	var defaultPwshAutoUpdateScriptFormat string
+	var defaultPwshAutoUpdateCommandFormat string
 	var defaultPwshInstallerUri string
 	var defaultRebootCompleteCommand string
 	var defaultRebootInitiateCommand string
@@ -127,18 +125,17 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
 		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
-		defaultPwshAutoUpdateCommand = defaultExecuteCommand
-		defaultPwshAutoUpdateScriptFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
-		defaultPwshAutoUpdateScriptFormat += "$exitCode = -1;\n"
-		defaultPwshAutoUpdateScriptFormat += "try {\n"
-		defaultPwshAutoUpdateScriptFormat += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
-		defaultPwshAutoUpdateScriptFormat += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
-		defaultPwshAutoUpdateScriptFormat += "    Invoke-WebRequest -OutFile $tempFilePath -Uri '%s';\n"
-		defaultPwshAutoUpdateScriptFormat += "    $exitCode = (Start-Process -ArgumentList @('/i', $tempFilePath, '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
-		defaultPwshAutoUpdateScriptFormat += "}\n"
-		defaultPwshAutoUpdateScriptFormat += "finally {\n"
-		defaultPwshAutoUpdateScriptFormat += "    exit $exitCode;\n"
-		defaultPwshAutoUpdateScriptFormat += "}\n"
+		defaultPwshAutoUpdateCommandFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
+		defaultPwshAutoUpdateCommandFormat += "$exitCode = -1;\n"
+		defaultPwshAutoUpdateCommandFormat += "try {\n"
+		defaultPwshAutoUpdateCommandFormat += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+		defaultPwshAutoUpdateCommandFormat += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
+		defaultPwshAutoUpdateCommandFormat += "    Invoke-WebRequest -OutFile $tempFilePath -Uri '%s';\n"
+		defaultPwshAutoUpdateCommandFormat += "    $exitCode = (Start-Process -ArgumentList @('/i', $tempFilePath, '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
+		defaultPwshAutoUpdateCommandFormat += "}\n"
+		defaultPwshAutoUpdateCommandFormat += "finally {\n"
+		defaultPwshAutoUpdateCommandFormat += "    exit $exitCode;\n"
+		defaultPwshAutoUpdateCommandFormat += "}\n"
 		defaultPwshInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 		defaultRebootCompleteCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 		defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
@@ -182,17 +179,13 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Inline = nil
 	}
 
-	if "" == p.config.PwshAutoUpdateCommand {
-		p.config.PwshAutoUpdateCommand = defaultPwshAutoUpdateCommand
-	}
-
 	if p.config.PwshAutoUpdateIsEnabled {
 		if ("" == p.config.PwshInstallerUri) && ("" != defaultPwshInstallerUri) {
 			p.config.PwshInstallerUri = defaultPwshInstallerUri
 		}
 
-		if "" == p.config.PwshAutoUpdateScript {
-			p.config.PwshAutoUpdateScript = fmt.Sprintf(defaultPwshAutoUpdateScriptFormat, p.config.PwshInstallerUri)
+		if "" == p.config.PwshAutoUpdateCommand {
+			p.config.PwshAutoUpdateCommand = fmt.Sprintf(defaultPwshAutoUpdateCommandFormat, p.config.PwshInstallerUri)
 		}
 	}
 
@@ -282,12 +275,6 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scripts [
 		return e
 	} else {
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
-
-		if "" != p.config.ElevatedUser {
-			if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
-				return e
-			}
-		}
 
 		return p.uploadAndExecuteScripts(command, context, remotePath, scripts, ui)
 	}
@@ -416,12 +403,12 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 	remotePath := p.config.RemotePwshAutoUpdatePath
 	p.generatedData["Path"] = remotePath
 
-	if command, e := interpolate.Render(p.config.PwshAutoUpdateCommand, &p.config.ctx); nil != e {
+	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
 		return e
 	} else {
 		ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
 
-		if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateScript}); nil != e {
+		if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateCommand}); nil != e {
 			return e
 		} else {
 			return p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui)
@@ -429,6 +416,14 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 	}
 }
 func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, remotePath string, scripts []string, ui packersdk.Ui) error {
+	var e error
+
+	if "" != p.config.ElevatedUser {
+		if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
+			return e
+		}
+	}
+
 	for _, path := range scripts {
 		if scriptFileInfo, e := os.Stat(path); nil != e {
 			return fmt.Errorf(pwshScriptStatingErrorFormat, e)
