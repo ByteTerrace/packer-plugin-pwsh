@@ -351,7 +351,7 @@ func (p *Provisioner) initializeScriptCollection() ([]string, error) {
 		return scripts, nil
 	}
 }
-func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error { // TODO: Refactor to support arbitrary operating systems.
+func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error {
 	ui.Say(fmt.Sprintf("Initiating machine reboot; command: %s", p.config.RebootInitiateCommand))
 
 	remoteCmd := &packersdk.RemoteCmd{Command: p.config.RebootInitiateCommand}
@@ -365,13 +365,14 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 			return fmt.Errorf("Failed to reboot machine; exit code: %d", exitCode)
 		} else {
 			ui.Say(fmt.Sprintf("Waiting for machine reboot; command: %s", p.config.RebootCompleteCommand))
+			time.Sleep(13 * time.Second)
 
 			for {
 				remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
 
 				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
 					break
-				} else {
+				} else { // TODO: Refactor to support arbitrary operating systems...
 					exitCode = remoteCmd.ExitStatus()
 
 					if 0 == exitCode {
