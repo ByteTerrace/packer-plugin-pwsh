@@ -39,8 +39,8 @@ type Config struct {
 	shell.Provisioner               `mapstructure:",squash"`
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
-	CloudDetectionCommand              string `mapstructure:"cloud_detection_command"`
-	CloudDetectionIsEnabled            bool   `mapstructure:"cloud_detection_is_enabled"`
+	CloudProviderDetectionCommand      string `mapstructure:"cloud_provider_detection_command"`
+	CloudProviderDetectionIsEnabled    bool   `mapstructure:"cloud_provider_detection_is_enabled"`
 	ElevatedEnvVarFormat               string `mapstructure:"elevated_env_var_format"`
 	ElevatedExecuteCommand             string `mapstructure:"elevated_execute_command"`
 	ElevatedUser                       string `mapstructure:"elevated_user"`
@@ -100,7 +100,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		return e
 	}
 
-	var defaultCloudDetectionCommand string
+	var defaultCloudProviderDetectionCommand string
 	var defaultElevatedEnvVarFormat string
 	var defaultEnvVarFormat string
 	var defaultExecuteCommand string
@@ -127,18 +127,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	//	defaultRemotePathFormat = `/tmp/packer-pwsh-script-%s.ps1`
 	//	defaultRemotePwshUpdatePathFormat = `/tmp/packer-pwsh-installer-%s.sh`
 	case "windows":
-		defaultCloudDetectionCommand = "$ErrorActionPreference = [Management.Automation.ActionPreference]::SilentlyContinue;\n"
-		defaultCloudDetectionCommand += "$cloudProvider = 'Unknown';\n"
-		defaultCloudDetectionCommand += "try {\n"
-		defaultCloudDetectionCommand += "    if ($null -ne (Invoke-WebRequest -Method 'GET' -NoProxy -Uri 'http://169.254.169.254/latest/meta-data/')) { $cloudProvider = 'Amazon Compute'; }\n"
-		defaultCloudDetectionCommand += "    elseif ($null -ne (Invoke-WebRequest -Headers @{ Metadata = 'true'; } -Method 'GET' -NoProxy -Uri 'http://169.254.169.254/metadata/instance?api-version=2021-02-01')) { $cloudProvider = 'Microsoft Azure'; }\n"
-		defaultCloudDetectionCommand += "    elseif ($null -ne (Invoke-WebRequest -Headers @{ 'Metadata-Flavor' = 'Google'; } -Method 'GET' -NoProxy -Uri 'http://metadata.google.internal/computeMetadata/v1')) { $cloudProvider = 'Google Compute'; }\n"
-		defaultCloudDetectionCommand += "    New-Item -Force -Path 'HKCU:/Software/Packer/Plugins/pwsh' | Out-Null;\n"
-		defaultCloudDetectionCommand += "    New-ItemProperty -Force -Name 'CloudProvider' -Path 'HKCU:/Software/Packer/Plugins/pwsh' -Value $cloudProvider | Out-Null;\n"
-		defaultCloudDetectionCommand += "}\n"
-		defaultCloudDetectionCommand += "finally {\n"
-		defaultCloudDetectionCommand += "    exit 0;\n"
-		defaultCloudDetectionCommand += "}\n"
+		defaultCloudProviderDetectionCommand = "$ErrorActionPreference = [Management.Automation.ActionPreference]::SilentlyContinue;\n"
+		defaultCloudProviderDetectionCommand += "$cloudProvider = 'Unknown';\n"
+		defaultCloudProviderDetectionCommand += "try {\n"
+		defaultCloudProviderDetectionCommand += "    if ($null -ne (Invoke-WebRequest -Method 'GET' -NoProxy -Uri 'http://169.254.169.254/latest/meta-data/')) { $cloudProvider = 'Amazon Compute'; }\n"
+		defaultCloudProviderDetectionCommand += "    elseif ($null -ne (Invoke-WebRequest -Headers @{ Metadata = 'true'; } -Method 'GET' -NoProxy -Uri 'http://169.254.169.254/metadata/instance?api-version=2021-02-01')) { $cloudProvider = 'Microsoft Azure'; }\n"
+		defaultCloudProviderDetectionCommand += "    elseif ($null -ne (Invoke-WebRequest -Headers @{ 'Metadata-Flavor' = 'Google'; } -Method 'GET' -NoProxy -Uri 'http://metadata.google.internal/computeMetadata/v1')) { $cloudProvider = 'Google Compute'; }\n"
+		defaultCloudProviderDetectionCommand += "    New-Item -Force -Path 'HKCU:/Software/Packer/Plugins/pwsh' | Out-Null;\n"
+		defaultCloudProviderDetectionCommand += "    New-ItemProperty -Force -Name 'CloudProvider' -Path 'HKCU:/Software/Packer/Plugins/pwsh' -Value $cloudProvider | Out-Null;\n"
+		defaultCloudProviderDetectionCommand += "}\n"
+		defaultCloudProviderDetectionCommand += "finally {\n"
+		defaultCloudProviderDetectionCommand += "    exit 0;\n"
+		defaultCloudProviderDetectionCommand += "}\n"
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
 		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
@@ -177,8 +177,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
 	}
 
-	if "" == p.config.CloudDetectionCommand {
-		p.config.CloudDetectionCommand = defaultCloudDetectionCommand
+	if "" == p.config.CloudProviderDetectionCommand {
+		p.config.CloudProviderDetectionCommand = defaultCloudProviderDetectionCommand
 	}
 
 	if "" == p.config.ElevatedEnvVarFormat {
@@ -278,7 +278,7 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 		}
 	}
 
-	if p.config.CloudDetectionIsEnabled {
+	if p.config.CloudProviderDetectionIsEnabled {
 		if e := p.detectCloudProvider(context, ui); nil != e {
 			return e
 		}
@@ -300,17 +300,11 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 }
 
 func (p *Provisioner) detectCloudProvider(context context.Context, ui packersdk.Ui) error {
-	if "" != p.config.CloudDetectionCommand {
-		ui.Say("Detecting cloud provider...")
+	ui.Say("Detecting cloud provider...")
 
-		remoteCmd := &packersdk.RemoteCmd{Command: p.config.CloudDetectionCommand}
+	remoteCmd := &packersdk.RemoteCmd{Command: p.config.CloudProviderDetectionCommand}
 
-		if e := remoteCmd.RunWithUi(context, p.communicator, ui); nil != e {
-			return e
-		}
-	}
-
-	return nil
+	return remoteCmd.RunWithUi(context, p.communicator, ui)
 }
 func (p *Provisioner) executeScriptCollection(context context.Context, scripts []string, ui packersdk.Ui) error {
 	remotePath := p.config.RemotePath
@@ -451,23 +445,19 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 	}
 }
 func (p *Provisioner) updatePwshInstallation(context context.Context, ui packersdk.Ui) error {
-	if "" != p.config.PwshInstallerUri {
-		remotePath := p.config.RemotePwshAutoUpdatePath
-		p.generatedData["Path"] = remotePath
+	remotePath := p.config.RemotePwshAutoUpdatePath
+	p.generatedData["Path"] = remotePath
 
-		if command, e := interpolate.Render(p.config.PwshAutoUpdateCommand, &p.config.ctx); nil != e {
+	if command, e := interpolate.Render(p.config.PwshAutoUpdateCommand, &p.config.ctx); nil != e {
+		return e
+	} else {
+		ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
+
+		if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateScript}); nil != e {
 			return e
 		} else {
-			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
-
-			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateScript}); nil != e {
-				return e
-			} else {
-				return p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui)
-			}
+			return p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui)
 		}
-	} else {
-		return nil
 	}
 }
 func (p *Provisioner) uploadAndExecuteScripts(command string, context context.Context, remotePath string, scripts []string, ui packersdk.Ui) error {
