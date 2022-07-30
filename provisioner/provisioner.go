@@ -41,13 +41,13 @@ type Config struct {
 
 	ElevatedEnvVarFormat               string `mapstructure:"elevated_env_var_format"`
 	ElevatedExecuteCommand             string `mapstructure:"elevated_execute_command"`
-	ElevatedUser                       string `mapstructure:"elevated_user"`
 	ElevatedPassword                   string `mapstructure:"elevated_password"`
+	ElevatedUser                       string `mapstructure:"elevated_user"`
 	PostProvisionRebootIsEnabled       bool   `mapstructure:"post_provision_reboot_is_enabled"`
 	PostScriptExecutionRebootIsEnabled bool   `mapstructure:"post_script_execution_reboot_is_enabled"`
 	PwshAutoUpdateCommand              string `mapstructure:"pwsh_autoupdate_command"`
+	PwshAutoUpdateInstallerUri         string `mapstructure:"pwsh_autoupdate_installer_uri"`
 	PwshAutoUpdateIsEnabled            bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
-	PwshInstallerUri                   string `mapstructure:"pwsh_installer_uri"`
 	RebootCompleteCommand              string `mapstructure:"reboot_complete_command"`
 	RebootInitiateCommand              string `mapstructure:"reboot_initiate_command"`
 	RebootPendingCommand               string `mapstructure:"reboot_pending_command"`
@@ -67,13 +67,13 @@ func (p *Provisioner) Communicator() packersdk.Communicator {
 	return p.communicator
 }
 func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
-func (p *Provisioner) ElevatedUser() string {
-	return p.config.ElevatedUser
-}
 func (p *Provisioner) ElevatedPassword() string {
 	elevatedPassword, _ := interpolate.Render(p.config.ElevatedPassword, &p.config.ctx)
 
 	return elevatedPassword
+}
+func (p *Provisioner) ElevatedUser() string {
+	return p.config.ElevatedUser
 }
 func (p *Provisioner) Prepare(raws ...interface{}) error {
 	e := config.Decode(
@@ -101,7 +101,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultEnvVarFormat string
 	var defaultExecuteCommand string
 	var defaultPwshAutoUpdateCommandFormat string
-	var defaultPwshInstallerUri string
+	var defaultPwshAutoUpdateInstallerUri string
 	var defaultRebootCompleteCommand string
 	var defaultRebootInitiateCommand string
 	var defaultRebootPendingCommand string
@@ -136,7 +136,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultPwshAutoUpdateCommandFormat += "finally {\n"
 		defaultPwshAutoUpdateCommandFormat += "    exit $exitCode;\n"
 		defaultPwshAutoUpdateCommandFormat += "}\n"
-		defaultPwshInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
+		defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 		defaultRebootCompleteCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 		defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
 		defaultRebootPendingCommand = "$activeComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ActiveComputerName').ComputerName;"
@@ -180,12 +180,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if p.config.PwshAutoUpdateIsEnabled {
-		if ("" == p.config.PwshInstallerUri) && ("" != defaultPwshInstallerUri) {
-			p.config.PwshInstallerUri = defaultPwshInstallerUri
+		if ("" == p.config.PwshAutoUpdateInstallerUri) && ("" != defaultPwshAutoUpdateInstallerUri) {
+			p.config.PwshAutoUpdateInstallerUri = defaultPwshAutoUpdateInstallerUri
 		}
 
 		if "" == p.config.PwshAutoUpdateCommand {
-			p.config.PwshAutoUpdateCommand = fmt.Sprintf(defaultPwshAutoUpdateCommandFormat, p.config.PwshInstallerUri)
+			p.config.PwshAutoUpdateCommand = fmt.Sprintf(defaultPwshAutoUpdateCommandFormat, p.config.PwshAutoUpdateInstallerUri)
 		}
 	}
 
@@ -357,7 +357,7 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 			for {
 				remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootCompleteCommand}
 
-				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
+				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e { // TODO: Consider inspecting the error instead of ignoring it.
 					break
 				} else { // TODO: Refactor to support arbitrary operating systems...
 					exitCode = remoteCmd.ExitStatus()
@@ -380,17 +380,15 @@ func (p *Provisioner) rebootMachine(ctx context.Context, ui packersdk.Ui) error 
 			for {
 				remoteCmd = &packersdk.RemoteCmd{Command: p.config.RebootValidateCommand}
 
-				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
-					return e
-				} else {
+				if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil == e { // TODO: Consider inspecting the error instead of ignoring it.
 					exitCode = remoteCmd.ExitStatus()
 
 					if 0 == exitCode {
 						break
-					} else {
-						time.Sleep(13 * time.Second)
 					}
 				}
+
+				time.Sleep(13 * time.Second)
 			}
 
 			ui.Say(fmt.Sprintf("Completed machine reboot; exit code: %d", exitCode))

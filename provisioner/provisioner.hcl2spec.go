@@ -30,13 +30,13 @@ type FlatConfig struct {
 	ExecuteCommand                     *string           `mapstructure:"execute_command" cty:"execute_command" hcl:"execute_command"`
 	ElevatedEnvVarFormat               *string           `mapstructure:"elevated_env_var_format" cty:"elevated_env_var_format" hcl:"elevated_env_var_format"`
 	ElevatedExecuteCommand             *string           `mapstructure:"elevated_execute_command" cty:"elevated_execute_command" hcl:"elevated_execute_command"`
-	ElevatedUser                       *string           `mapstructure:"elevated_user" cty:"elevated_user" hcl:"elevated_user"`
 	ElevatedPassword                   *string           `mapstructure:"elevated_password" cty:"elevated_password" hcl:"elevated_password"`
+	ElevatedUser                       *string           `mapstructure:"elevated_user" cty:"elevated_user" hcl:"elevated_user"`
 	PostProvisionRebootIsEnabled       *bool             `mapstructure:"post_provision_reboot_is_enabled" cty:"post_provision_reboot_is_enabled" hcl:"post_provision_reboot_is_enabled"`
 	PostScriptExecutionRebootIsEnabled *bool             `mapstructure:"post_script_execution_reboot_is_enabled" cty:"post_script_execution_reboot_is_enabled" hcl:"post_script_execution_reboot_is_enabled"`
 	PwshAutoUpdateCommand              *string           `mapstructure:"pwsh_autoupdate_command" cty:"pwsh_autoupdate_command" hcl:"pwsh_autoupdate_command"`
+	PwshAutoUpdateInstallerUri         *string           `mapstructure:"pwsh_autoupdate_installer_uri" cty:"pwsh_autoupdate_installer_uri" hcl:"pwsh_autoupdate_installer_uri"`
 	PwshAutoUpdateIsEnabled            *bool             `mapstructure:"pwsh_autoupdate_is_enabled" cty:"pwsh_autoupdate_is_enabled" hcl:"pwsh_autoupdate_is_enabled"`
-	PwshInstallerUri                   *string           `mapstructure:"pwsh_installer_uri" cty:"pwsh_installer_uri" hcl:"pwsh_installer_uri"`
 	RebootCompleteCommand              *string           `mapstructure:"reboot_complete_command" cty:"reboot_complete_command" hcl:"reboot_complete_command"`
 	RebootInitiateCommand              *string           `mapstructure:"reboot_initiate_command" cty:"reboot_initiate_command" hcl:"reboot_initiate_command"`
 	RebootPendingCommand               *string           `mapstructure:"reboot_pending_command" cty:"reboot_pending_command" hcl:"reboot_pending_command"`
@@ -77,13 +77,13 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"execute_command":                  &hcldec.AttrSpec{Name: "execute_command", Type: cty.String, Required: false},
 		"elevated_env_var_format":          &hcldec.AttrSpec{Name: "elevated_env_var_format", Type: cty.String, Required: false},
 		"elevated_execute_command":         &hcldec.AttrSpec{Name: "elevated_execute_command", Type: cty.String, Required: false},
-		"elevated_user":                    &hcldec.AttrSpec{Name: "elevated_user", Type: cty.String, Required: false},
 		"elevated_password":                &hcldec.AttrSpec{Name: "elevated_password", Type: cty.String, Required: false},
+		"elevated_user":                    &hcldec.AttrSpec{Name: "elevated_user", Type: cty.String, Required: false},
 		"post_provision_reboot_is_enabled": &hcldec.AttrSpec{Name: "post_provision_reboot_is_enabled", Type: cty.Bool, Required: false},
 		"post_script_execution_reboot_is_enabled": &hcldec.AttrSpec{Name: "post_script_execution_reboot_is_enabled", Type: cty.Bool, Required: false},
 		"pwsh_autoupdate_command":                 &hcldec.AttrSpec{Name: "pwsh_autoupdate_command", Type: cty.String, Required: false},
+		"pwsh_autoupdate_installer_uri":           &hcldec.AttrSpec{Name: "pwsh_autoupdate_installer_uri", Type: cty.String, Required: false},
 		"pwsh_autoupdate_is_enabled":              &hcldec.AttrSpec{Name: "pwsh_autoupdate_is_enabled", Type: cty.Bool, Required: false},
-		"pwsh_installer_uri":                      &hcldec.AttrSpec{Name: "pwsh_installer_uri", Type: cty.String, Required: false},
 		"reboot_complete_command":                 &hcldec.AttrSpec{Name: "reboot_complete_command", Type: cty.String, Required: false},
 		"reboot_initiate_command":                 &hcldec.AttrSpec{Name: "reboot_initiate_command", Type: cty.String, Required: false},
 		"reboot_pending_command":                  &hcldec.AttrSpec{Name: "reboot_pending_command", Type: cty.String, Required: false},
