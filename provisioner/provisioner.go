@@ -186,12 +186,14 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.PwshAutoUpdateCommand = defaultPwshAutoUpdateCommand
 	}
 
-	if "" == p.config.PwshAutoUpdateScript {
-		p.config.PwshAutoUpdateScript = fmt.Sprintf(defaultPwshAutoUpdateScriptFormat, p.config.PwshInstallerUri)
-	}
+	if p.config.PwshAutoUpdateIsEnabled {
+		if ("" == p.config.PwshInstallerUri) && ("" != defaultPwshInstallerUri) {
+			p.config.PwshInstallerUri = defaultPwshInstallerUri
+		}
 
-	if ("" == p.config.PwshInstallerUri) && ("" != defaultPwshInstallerUri) {
-		p.config.PwshInstallerUri = defaultPwshInstallerUri
+		if "" == p.config.PwshAutoUpdateScript {
+			p.config.PwshAutoUpdateScript = fmt.Sprintf(defaultPwshAutoUpdateScriptFormat, p.config.PwshInstallerUri)
+		}
 	}
 
 	if "" == p.config.RebootCompleteCommand {
