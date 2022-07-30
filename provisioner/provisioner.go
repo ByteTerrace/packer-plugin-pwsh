@@ -39,20 +39,21 @@ type Config struct {
 	shell.Provisioner               `mapstructure:",squash"`
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
-	ElevatedEnvVarFormat   string `mapstructure:"elevated_env_var_format"`
-	ElevatedExecuteCommand string `mapstructure:"elevated_execute_command"`
-	ElevatedUser           string `mapstructure:"elevated_user"`
-	ElevatedPassword       string `mapstructure:"elevated_password"`
-	PwshInstallerUri       string `mapstructure:"pwsh_installer_uri"`
-	PwshUpdateCommand      string `mapstructure:"pwsh_update_command"`
-	PwshUpdateIsDisabled   bool   `mapstructure:"pwsh_update_is_disabled"`
-	PwshUpdateScript       string `mapstructure:"pwsh_update_script"`
-	RebootCompleteCommand  string `mapstructure:"reboot_complete_command"`
-	RebootInitiateCommand  string `mapstructure:"reboot_initiate_command"`
-	RebootPendingCommand   string `mapstructure:"reboot_pending_command"`
-	RebootValidateCommand  string `mapstructure:"reboot_validate_command"`
-	RemoteEnvVarPath       string `mapstructure:"remote_env_var_path"`
-	RemotePwshUpdatePath   string `mapstructure:"remote_pwsh_update_path"`
+	ElevatedEnvVarFormat         string `mapstructure:"elevated_env_var_format"`
+	ElevatedExecuteCommand       string `mapstructure:"elevated_execute_command"`
+	ElevatedUser                 string `mapstructure:"elevated_user"`
+	ElevatedPassword             string `mapstructure:"elevated_password"`
+	PostProvisionRebootIsEnabled bool   `mapstructure:"post_provision_reboot_is_enabled"`
+	PwshAutoUpdateCommand        string `mapstructure:"pwsh_autoupdate_command"`
+	PwshAutoUpdateIsEnabled      bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
+	PwshAutoUpdateScript         string `mapstructure:"pwsh_autoupdate_script"`
+	PwshInstallerUri             string `mapstructure:"pwsh_installer_uri"`
+	RebootCompleteCommand        string `mapstructure:"reboot_complete_command"`
+	RebootInitiateCommand        string `mapstructure:"reboot_initiate_command"`
+	RebootPendingCommand         string `mapstructure:"reboot_pending_command"`
+	RebootValidateCommand        string `mapstructure:"reboot_validate_command"`
+	RemoteEnvVarPath             string `mapstructure:"remote_env_var_path"`
+	RemotePwshUpdatePath         string `mapstructure:"remote_pwsh_update_path"`
 
 	ctx interpolate.Context
 }
@@ -100,16 +101,16 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var defaultElevatedEnvVarFormat string
 	var defaultEnvVarFormat string
 	var defaultExecuteCommand string
+	var defaultPwshAutoUpdateCommand string
+	var defaultPwshAutoUpdateScriptFormat string
 	var defaultPwshInstallerUri string
-	var defaultPwshUpdateCommand string
-	var defaultPwshUpdateScriptFormat string
 	var defaultRebootCompleteCommand string
-	var defaultRebootPendingCommand string
 	var defaultRebootInitiateCommand string
+	var defaultRebootPendingCommand string
 	var defaultRebootValidateCommand string
 	var defaultRemoteEnvVarPathFormat string
-	var defaultRemotePathFormat string
-	var defaultRemotePwshUpdatePathFormat string
+	var defaultRemotePwshAutoUpdateScriptPathFormat string
+	var defaultRemoteScriptPathFormat string
 
 	switch runtime.GOOS {
 	//case "linux":
@@ -126,34 +127,37 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 		defaultEnvVarFormat = `{$Env:%s}="%s"`
 		defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -Command "&'{{.Path}}'; exit $LastExitCode;" -ExecutionPolicy "Bypass")`
+		defaultPwshAutoUpdateCommand = defaultExecuteCommand
+		defaultPwshAutoUpdateScriptFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
+		defaultPwshAutoUpdateScriptFormat += "$exitCode = -1;\n"
+		defaultPwshAutoUpdateScriptFormat += "try {\n"
+		defaultPwshAutoUpdateScriptFormat += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
+		defaultPwshAutoUpdateScriptFormat += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
+		defaultPwshAutoUpdateScriptFormat += "    Invoke-WebRequest -OutFile $tempFilePath -Uri '%s';\n"
+		defaultPwshAutoUpdateScriptFormat += "    $exitCode = (Start-Process -ArgumentList @('/i', $tempFilePath, '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
+		defaultPwshAutoUpdateScriptFormat += "}\n"
+		defaultPwshAutoUpdateScriptFormat += "finally {\n"
+		defaultPwshAutoUpdateScriptFormat += "    exit $exitCode;\n"
+		defaultPwshAutoUpdateScriptFormat += "}\n"
 		defaultPwshInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
-		defaultPwshUpdateCommand = defaultExecuteCommand
-		defaultPwshUpdateScriptFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
-		defaultPwshUpdateScriptFormat += "$exitCode = -1;\n"
-		defaultPwshUpdateScriptFormat += "try {\n"
-		defaultPwshUpdateScriptFormat += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
-		defaultPwshUpdateScriptFormat += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
-		defaultPwshUpdateScriptFormat += "    Invoke-WebRequest -OutFile $tempFilePath -Uri '%s';\n"
-		defaultPwshUpdateScriptFormat += "    $exitCode = (Start-Process -ArgumentList @('/i', $tempFilePath, '/norestart', '/qn') -FilePath 'msiexec.exe' -PassThru -Wait).ExitCode;\n"
-		defaultPwshUpdateScriptFormat += "}\n"
-		defaultPwshUpdateScriptFormat += "finally {\n"
-		defaultPwshUpdateScriptFormat += "    exit $exitCode;\n"
-		defaultPwshUpdateScriptFormat += "}\n"
 		defaultRebootCompleteCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 		defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
 		defaultRebootPendingCommand = "$activeComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ActiveComputerName').ComputerName;"
+		defaultRebootPendingCommand += "$componentBasedServicingProperties = (Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Component Based Servicing').Property;"
 		defaultRebootPendingCommand += "$pendingComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ComputerName').ComputerName;"
+		defaultRebootPendingCommand += "$sessionManagerProperties = (Get-Item -Path 'HKLM:/System/CurrentControlSet/Control/Session Manager').Property;"
 		defaultRebootPendingCommand += "$systemNetLogonProperties = (Get-Item -Path 'HKLM:/SYSTEM/CurrentControlSet/Services/Netlogon').Property;"
-		defaultRebootPendingCommand += "$isRebootPending = ((Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Component Based Servicing').Property -contains 'RebootPending');"
-		defaultRebootPendingCommand += "$isRebootPending = (((Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/WindowsUpdate/Auto Update').Property -contains 'RebootRequired') -or $isRebootPending);"
-		defaultRebootPendingCommand += "$isRebootPending = (((Get-Item -Path 'HKLM:/System/CurrentControlSet/Control/Session Manager').Property -contains 'PendingFileRenameOperations') -or $isRebootPending);"
+		defaultRebootPendingCommand += "$windowsUpdateProperties = (Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/WindowsUpdate/Auto Update').Property;"
+		defaultRebootPendingCommand += "$isRebootPending = (($componentBasedServicingProperties -contains 'PackagesPending') -or ($componentBasedServicingProperties -contains 'RebootInProgress') -or ($componentBasedServicingProperties -contains 'RebootPending'));"
+		defaultRebootPendingCommand += "$isRebootPending = (($windowsUpdateProperties -contains 'PostRebootReporting') -or ($windowsUpdateProperties -contains 'RebootRequired') -or $isRebootPending);"
+		defaultRebootPendingCommand += "$isRebootPending = (($sessionManagerProperties -contains 'PendingFileRenameOperations') -or ($sessionManagerProperties -contains 'PendingFileRenameOperations2') -or $isRebootPending);"
 		defaultRebootPendingCommand += "$isRebootPending = (($activeComputerName -ne $pendingComputerName) -or $isRebootPending);"
-		defaultRebootPendingCommand += "$isRebootPending = (($systemNetLogonProperties -contains 'AvoidSpnSet') -or ($systemNetLogonProperties -contains 'JoinDomain') -or $isRebootPending)"
+		defaultRebootPendingCommand += "$isRebootPending = (($systemNetLogonProperties -contains 'AvoidSpnSet') -or ($systemNetLogonProperties -contains 'JoinDomain') -or $isRebootPending);"
 		defaultRebootPendingCommand += "exit $isRebootPending;"
 		defaultRebootValidateCommand = `powershell -Command "exit 0;" -ExecutionPolicy "Bypass"`
 		defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
-		defaultRemotePathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
-		defaultRemotePwshUpdatePathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
+		defaultRemotePwshAutoUpdateScriptPathFormat = `C:/Windows/Temp/packer-pwsh-installer-%s.ps1`
+		defaultRemoteScriptPathFormat = `C:/Windows/Temp/packer-pwsh-script-%s.ps1`
 	default:
 		packersdk.MultiErrorAppend(e, fmt.Errorf("Unsupported operating system detected: %s.", runtime.GOOS))
 	}
@@ -178,16 +182,16 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Inline = nil
 	}
 
+	if "" == p.config.PwshAutoUpdateCommand {
+		p.config.PwshAutoUpdateCommand = defaultPwshAutoUpdateCommand
+	}
+
+	if "" == p.config.PwshAutoUpdateScript {
+		p.config.PwshAutoUpdateScript = fmt.Sprintf(defaultPwshAutoUpdateScriptFormat, p.config.PwshInstallerUri)
+	}
+
 	if ("" == p.config.PwshInstallerUri) && ("" != defaultPwshInstallerUri) {
 		p.config.PwshInstallerUri = defaultPwshInstallerUri
-	}
-
-	if "" == p.config.PwshUpdateCommand {
-		p.config.PwshUpdateCommand = defaultPwshUpdateCommand
-	}
-
-	if "" == p.config.PwshUpdateScript {
-		p.config.PwshUpdateScript = fmt.Sprintf(defaultPwshUpdateScriptFormat, p.config.PwshInstallerUri)
 	}
 
 	if "" == p.config.RebootCompleteCommand {
@@ -207,11 +211,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if "" == p.config.RemotePath {
-		p.config.RemotePath = fmt.Sprintf(defaultRemotePathFormat, uuid.TimeOrderedUUID())
+		p.config.RemotePath = fmt.Sprintf(defaultRemoteScriptPathFormat, uuid.TimeOrderedUUID())
 	}
 
 	if "" == p.config.RemotePwshUpdatePath {
-		p.config.RemotePwshUpdatePath = fmt.Sprintf(defaultRemotePwshUpdatePathFormat, uuid.TimeOrderedUUID())
+		p.config.RemotePwshUpdatePath = fmt.Sprintf(defaultRemotePwshAutoUpdateScriptPathFormat, uuid.TimeOrderedUUID())
 	}
 
 	if nil == p.config.Scripts {
@@ -243,7 +247,7 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	if !p.config.PwshUpdateIsDisabled {
+	if !p.config.PwshAutoUpdateIsEnabled {
 		if e := p.updatePwshInstallation(context, ui); nil != e {
 			return e
 		}
@@ -252,7 +256,15 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 	if scripts, e := p.initializeScriptCollection(); nil != e {
 		return e
 	} else {
-		return p.executeScriptCollection(context, scripts, ui)
+		if e = p.executeScriptCollection(context, scripts, ui); nil != e {
+			return e
+		} else {
+			if p.config.PostProvisionRebootIsEnabled {
+				return p.rebootMachine(context, ui)
+			} else {
+				return nil
+			}
+		}
 	}
 }
 
@@ -398,12 +410,12 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 		remotePath := p.config.RemotePwshUpdatePath
 		p.generatedData["Path"] = remotePath
 
-		if command, e := interpolate.Render(p.config.PwshUpdateCommand, &p.config.ctx); nil != e {
+		if command, e := interpolate.Render(p.config.PwshAutoUpdateCommand, &p.config.ctx); nil != e {
 			return e
 		} else {
 			ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
 
-			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshUpdateScript}); nil != e {
+			if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateScript}); nil != e {
 				return e
 			} else {
 				return p.uploadAndExecuteScripts(command, context, remotePath, ([]string{updateScriptPath}), ui)
