@@ -247,7 +247,7 @@ func (p *Provisioner) Provision(context context.Context, ui packersdk.Ui, commun
 	p.config.ctx.Data = generatedData
 	p.generatedData = generatedData
 
-	if !p.config.PwshAutoUpdateIsEnabled {
+	if p.config.PwshAutoUpdateIsEnabled {
 		if e := p.updatePwshInstallation(context, ui); nil != e {
 			return e
 		}
