@@ -204,6 +204,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.RebootInitiateCommand = defaultRebootInitiateCommand
 	}
 
+	if "" == p.config.RebootPendingCommand {
+		p.config.RebootPendingCommand = defaultRebootPendingCommand
+	}
+
 	if "" == p.config.RebootValidateCommand {
 		p.config.RebootValidateCommand = defaultRebootValidateCommand
 	}
