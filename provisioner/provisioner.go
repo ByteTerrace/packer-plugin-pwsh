@@ -262,20 +262,25 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
 
 		for _, scriptPath := range scriptPaths {
+			ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", scriptPath))
+
 			if exitCode, e := p.uploadAndExecuteScript(command, context, remotePath, scriptPath, ui); nil != e {
 				return e
-			} else if "" != p.config.RebootPendingCommand {
+			} else {
 				ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", exitCode))
-				ui.Say("Checking for pending reboot...")
 
-				if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
-					return e
-				} else {
-					exitCode, e = p.uploadAndExecuteScript(command, context, remotePath, rebootScriptPath, ui)
+				if "" != p.config.RebootPendingCommand {
+					ui.Say("Checking for pending reboot...")
 
-					if 1 == exitCode {
-						if e = p.rebootMachine(context, ui); nil != e {
+					if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
+						return e
+					} else {
+						if exitCode, e = p.uploadAndExecuteScript(command, context, remotePath, rebootScriptPath, ui); nil != e {
 							return e
+						} else if 1 == exitCode {
+							if e = p.rebootMachine(context, ui); nil != e {
+								return e
+							}
 						}
 					}
 				}
@@ -409,8 +414,6 @@ func (p *Provisioner) uploadAndExecuteScript(command string, ctx context.Context
 	if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
 		return exitCode, fmt.Errorf(pwshScriptStatingErrorFormat, e)
 	} else {
-		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", scriptPath))
-
 		if os.IsPathSeparator(remotePath[len(remotePath)-1]) {
 			remotePath += filepath.Base(scriptFileInfo.Name())
 		}
