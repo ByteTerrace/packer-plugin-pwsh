@@ -449,7 +449,7 @@ func (p *Provisioner) uploadAndExecuteScript(command string, ctx context.Context
 						} else {
 							exitCode = remoteCmd.ExitStatus()
 
-							return p.config.ValidExitCode(exitCode)
+							return nil
 						}
 					}
 				},
