@@ -111,7 +111,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		case "windows":
 			defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 			defaultEnvVarFormat = `{$Env:%s}="%s"`
-			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "&'{{.Path}}'; exit $LastExitCode;")`
+			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop; &'{{.Path}}'; exit $LastExitCode;")`
 			defaultPwshAutoUpdateCommandFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
 			defaultPwshAutoUpdateCommandFormat += "$exitCode = -1;\n"
 			defaultPwshAutoUpdateCommandFormat += "try {\n"
@@ -126,18 +126,19 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 			defaultRebootCompleteCommand = `shutdown /a`
 			defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
-			defaultRebootPendingCommand = "$activeComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ActiveComputerName').ComputerName;"
-			defaultRebootPendingCommand += "$componentBasedServicingProperties = (Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Component Based Servicing').Property;"
-			defaultRebootPendingCommand += "$pendingComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ComputerName').ComputerName;"
-			defaultRebootPendingCommand += "$sessionManagerProperties = (Get-Item -Path 'HKLM:/System/CurrentControlSet/Control/Session Manager').Property;"
-			defaultRebootPendingCommand += "$systemNetLogonProperties = (Get-Item -Path 'HKLM:/SYSTEM/CurrentControlSet/Services/Netlogon').Property;"
-			defaultRebootPendingCommand += "$windowsUpdateProperties = (Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/WindowsUpdate/Auto Update').Property;"
-			defaultRebootPendingCommand += "$isRebootPending = (($componentBasedServicingProperties -contains 'PackagesPending') -or ($componentBasedServicingProperties -contains 'RebootInProgress') -or ($componentBasedServicingProperties -contains 'RebootPending'));"
-			defaultRebootPendingCommand += "$isRebootPending = (($windowsUpdateProperties -contains 'PostRebootReporting') -or ($windowsUpdateProperties -contains 'RebootRequired') -or $isRebootPending);"
-			defaultRebootPendingCommand += "$isRebootPending = (($sessionManagerProperties -contains 'PendingFileRenameOperations') -or ($sessionManagerProperties -contains 'PendingFileRenameOperations2') -or $isRebootPending);"
-			defaultRebootPendingCommand += "$isRebootPending = (($activeComputerName -ne $pendingComputerName) -or $isRebootPending);"
-			defaultRebootPendingCommand += "$isRebootPending = (($systemNetLogonProperties -contains 'AvoidSpnSet') -or ($systemNetLogonProperties -contains 'JoinDomain') -or $isRebootPending);"
-			defaultRebootPendingCommand += "exit $isRebootPending;"
+			defaultRebootPendingCommand = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
+			defaultRebootPendingCommand += "$activeComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ActiveComputerName').ComputerName;\n"
+			defaultRebootPendingCommand += "$componentBasedServicingProperties = (Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Component Based Servicing').Property;\n"
+			defaultRebootPendingCommand += "$pendingComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ComputerName').ComputerName;\n"
+			defaultRebootPendingCommand += "$sessionManagerProperties = (Get-Item -Path 'HKLM:/System/CurrentControlSet/Control/Session Manager').Property;\n"
+			defaultRebootPendingCommand += "$systemNetLogonProperties = (Get-Item -Path 'HKLM:/SYSTEM/CurrentControlSet/Services/Netlogon').Property;\n"
+			defaultRebootPendingCommand += "$windowsUpdateProperties = (Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/WindowsUpdate/Auto Update').Property;\n"
+			defaultRebootPendingCommand += "$isRebootPending = (($componentBasedServicingProperties -contains 'PackagesPending') -or ($componentBasedServicingProperties -contains 'RebootInProgress') -or ($componentBasedServicingProperties -contains 'RebootPending'));\n"
+			defaultRebootPendingCommand += "$isRebootPending = (($windowsUpdateProperties -contains 'PostRebootReporting') -or ($windowsUpdateProperties -contains 'RebootRequired') -or $isRebootPending);\n"
+			defaultRebootPendingCommand += "$isRebootPending = (($sessionManagerProperties -contains 'PendingFileRenameOperations') -or ($sessionManagerProperties -contains 'PendingFileRenameOperations2') -or $isRebootPending);\n"
+			defaultRebootPendingCommand += "$isRebootPending = (($activeComputerName -ne $pendingComputerName) -or $isRebootPending);\n"
+			defaultRebootPendingCommand += "$isRebootPending = (($systemNetLogonProperties -contains 'AvoidSpnSet') -or ($systemNetLogonProperties -contains 'JoinDomain') -or $isRebootPending);\n"
+			defaultRebootPendingCommand += "exit $isRebootPending;\n"
 			defaultRebootProgressCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 			defaultRebootValidateCommand = `powershell -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "exit 0;"`
 			defaultRemoteEnvVarPathFormat = `C:/Windows/Temp/packer-pwsh-variables-%s.ps1`
