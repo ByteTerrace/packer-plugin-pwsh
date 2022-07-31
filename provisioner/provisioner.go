@@ -269,17 +269,21 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 			} else {
 				ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", exitCode))
 
-				if "" != p.config.RebootPendingCommand {
-					ui.Say("Checking for pending reboot...")
+				if p.config.ValidExitCode(exitCode); nil != e {
+					return e
+				} else {
+					if "" != p.config.RebootPendingCommand {
+						ui.Say("Checking for pending reboot...")
 
-					if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
-						return e
-					} else {
-						if exitCode, e = p.uploadAndExecuteScript(command, context, remotePath, rebootScriptPath, ui); nil != e {
+						if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
 							return e
-						} else if 1 == exitCode {
-							if e = p.rebootMachine(context, ui); nil != e {
+						} else {
+							if exitCode, e = p.uploadAndExecuteScript(command, context, remotePath, rebootScriptPath, ui); nil != e {
 								return e
+							} else if 1 == exitCode {
+								if e = p.rebootMachine(context, ui); nil != e {
+									return e
+								}
 							}
 						}
 					}
