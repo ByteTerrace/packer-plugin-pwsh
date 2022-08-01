@@ -111,9 +111,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		case "windows":
 			defaultElevatedEnvVarFormat = `${Env:%s}="%s"`
 			defaultEnvVarFormat = `{$Env:%s}="%s"`
-			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop; &'{{.Path}}'; exit $LastExitCode;")`
-			defaultPwshAutoUpdateCommandFormat = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
-			defaultPwshAutoUpdateCommandFormat += "$exitCode = -1;\n"
+			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
+			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
+			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
+			defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
+			defaultPwshAutoUpdateCommandFormat = "$exitCode = -1;\n"
 			defaultPwshAutoUpdateCommandFormat += "try {\n"
 			defaultPwshAutoUpdateCommandFormat += "    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;\n"
 			defaultPwshAutoUpdateCommandFormat += "    $tempFilePath = ('{0}packer-pwsh-installer.msi' -f [IO.Path]::GetTempPath());\n"
