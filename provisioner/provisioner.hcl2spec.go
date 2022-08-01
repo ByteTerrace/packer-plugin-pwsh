@@ -37,6 +37,7 @@ type FlatConfig struct {
 	PwshAutoUpdateIsEnabled    *bool             `mapstructure:"pwsh_autoupdate_is_enabled" cty:"pwsh_autoupdate_is_enabled" hcl:"pwsh_autoupdate_is_enabled"`
 	RebootCompleteCommand      *string           `mapstructure:"reboot_complete_command" cty:"reboot_complete_command" hcl:"reboot_complete_command"`
 	RebootInitiateCommand      *string           `mapstructure:"reboot_initiate_command" cty:"reboot_initiate_command" hcl:"reboot_initiate_command"`
+	RebootIsEnabled            *bool             `mapstructure:"reboot_is_enabled" cty:"reboot_is_enabled" hcl:"reboot_is_enabled"`
 	RebootPendingCommand       *string           `mapstructure:"reboot_pending_command" cty:"reboot_pending_command" hcl:"reboot_pending_command"`
 	RebootProgressCommand      *string           `mapstructure:"reboot_progress_command" cty:"reboot_progress_command" hcl:"reboot_progress_command"`
 	RebootValidateCommand      *string           `mapstructure:"reboot_validate_command" cty:"reboot_validate_command" hcl:"reboot_validate_command"`
@@ -83,6 +84,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"pwsh_autoupdate_is_enabled":    &hcldec.AttrSpec{Name: "pwsh_autoupdate_is_enabled", Type: cty.Bool, Required: false},
 		"reboot_complete_command":       &hcldec.AttrSpec{Name: "reboot_complete_command", Type: cty.String, Required: false},
 		"reboot_initiate_command":       &hcldec.AttrSpec{Name: "reboot_initiate_command", Type: cty.String, Required: false},
+		"reboot_is_enabled":             &hcldec.AttrSpec{Name: "reboot_is_enabled", Type: cty.Bool, Required: false},
 		"reboot_pending_command":        &hcldec.AttrSpec{Name: "reboot_pending_command", Type: cty.String, Required: false},
 		"reboot_progress_command":       &hcldec.AttrSpec{Name: "reboot_progress_command", Type: cty.String, Required: false},
 		"reboot_validate_command":       &hcldec.AttrSpec{Name: "reboot_validate_command", Type: cty.String, Required: false},

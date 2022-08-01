@@ -48,6 +48,7 @@ type Config struct {
 	PwshAutoUpdateIsEnabled    bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
 	RebootCompleteCommand      string `mapstructure:"reboot_complete_command"`
 	RebootInitiateCommand      string `mapstructure:"reboot_initiate_command"`
+	RebootIsEnabled            bool   `mapstructure:"reboot_is_enabled"`
 	RebootPendingCommand       string `mapstructure:"reboot_pending_command"`
 	RebootProgressCommand      string `mapstructure:"reboot_progress_command"`
 	RebootValidateCommand      string `mapstructure:"reboot_validate_command"`
@@ -128,8 +129,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 			defaultRebootCompleteCommand = `shutdown /a`
 			defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
-			defaultRebootPendingCommand = "$ErrorActionPreference = [Management.Automation.ActionPreference]::Stop;\n"
-			defaultRebootPendingCommand += "$activeComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ActiveComputerName').ComputerName;\n"
+			defaultRebootPendingCommand = "$activeComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ActiveComputerName').ComputerName;\n"
 			defaultRebootPendingCommand += "$componentBasedServicingProperties = (Get-Item -Path 'HKLM:/SOFTWARE/Microsoft/Windows/CurrentVersion/Component Based Servicing').Property;\n"
 			defaultRebootPendingCommand += "$pendingComputerName = (Get-ItemProperty -Name 'ComputerName' -Path 'HKLM:/SYSTEM/CurrentControlSet/Control/ComputerName/ComputerName').ComputerName;\n"
 			defaultRebootPendingCommand += "$sessionManagerProperties = (Get-Item -Path 'HKLM:/System/CurrentControlSet/Control/Session Manager').Property;\n"
@@ -275,7 +275,7 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 				if p.config.ValidExitCode(exitCode); nil != e {
 					return e
 				} else {
-					if "" != p.config.RebootPendingCommand {
+					if p.config.RebootIsEnabled {
 						ui.Say("Checking for pending reboot...")
 
 						if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
