@@ -1,4 +1,4 @@
-exitCode = -1;
+$exitCode = -1;
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
