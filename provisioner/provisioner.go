@@ -398,15 +398,14 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 	exitCode := -1
 
 	var command string
-	var e error
 
-	if ("" == p.config.ElevatedUser) && ("" == p.config.ElevatedPassword) {
+	if "" == p.config.ElevatedUser {
 		command = p.config.ExecuteCommand
 	} else {
 		command = p.config.ElevatedExecuteCommand
 	}
 
-	if command, e = interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
+	if command, e := interpolate.Render(command, &p.config.ctx); nil != e {
 		return exitCode, e
 	} else {
 		if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
