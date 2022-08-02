@@ -400,7 +400,7 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 	var command string
 	var e error
 
-	if "" == p.config.ElevatedPassword {
+	if "" == p.config.ElevatedUser {
 		command = p.config.ExecuteCommand
 	} else {
 		command = p.config.ElevatedExecuteCommand
