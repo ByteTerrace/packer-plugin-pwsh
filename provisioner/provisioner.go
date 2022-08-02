@@ -109,7 +109,9 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultRemoteScriptDirectoryPath := `/tmp`
 		defaultRemoteScriptExtension := `sh`
 
-		switch strings.ToLower(p.config.OsType) {
+		p.config.OsType = strings.ToLower(p.config.OsType)
+
+		switch p.config.OsType {
 		case `windows`:
 			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
@@ -428,7 +430,7 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 						} else if e = p.communicator.Upload(remotePath, scriptFileHandle, &scriptFileInfo); nil != e {
 							return fmt.Errorf(pwshScriptUploadingErrorFormat, e)
 						} else {
-							if "" != p.config.ElevatedUser {
+							if ("windows" == p.config.OsType) && (("" != p.config.ElevatedPassword) || ("" == p.config.ElevatedUser)) {
 								if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
 									return e
 								}
