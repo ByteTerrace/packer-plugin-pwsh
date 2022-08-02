@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/hashicorp/hcl/v2/hcldec"
@@ -99,19 +100,27 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		defaultCommand := "chmod +x {{.Path}} && {{.Path}}"
 		defaultElevatedExecuteCommand := fmt.Sprintf("echo \"packer\" | sudo -S sh -e -c '%s'", defaultCommand)
 		defaultExecuteCommand := defaultCommand
-		defaultPwshAutoUpdateCommand := ""
+		defaultPwshAutoUpdateInstallerUri := ""
 		defaultRebootCompleteCommand := ""
 		defaultRebootInitiateCommand := ""
-		defaultRebootPendingCommand := ""
 		defaultRebootProgressCommand := ""
 		defaultRebootValidateCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "exit 0;"`
 		defaultRemotePathFormat := `%s/packer-pwsh-%s-%%s.%s`
 		defaultRemoteScriptDirectoryPath := `/tmp`
 		defaultRemoteScriptExtension := `sh`
 
+		var defaultPwshAutoUpdateTemplate *template.Template
+		var defaultRebootPendingTemplate *template.Template
+
 		p.config.OsType = strings.ToLower(p.config.OsType)
 
 		switch p.config.OsType {
+		case "debian":
+		case "ubuntu":
+			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/powershell_7.2.5-1.deb_amd64.deb"
+			defaultPwshAutoUpdateTemplate = debianPwshAutoUpdateTemplate
+
+			break
 		case "windows":
 			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
@@ -123,29 +132,15 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultRebootProgressCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 			defaultRemoteScriptDirectoryPath = `C:/Windows/Temp`
 			defaultRemoteScriptExtension = `.ps1`
-
-			if "" == p.config.PwshAutoUpdateInstallerUri {
-				p.config.PwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
-			}
-
-			var buffer bytes.Buffer
-
-			if e := windowsPwshAutoUpdateTemplate.Execute(&buffer, windowsPwshAutoUpdateOptions{
-				Uri: p.config.PwshAutoUpdateInstallerUri,
-			}); nil != e {
-				return e
-			} else {
-				defaultPwshAutoUpdateCommand = strings.ReplaceAll(strings.ReplaceAll(string(buffer.Bytes()), "\r\n", "\n"), "\r", "\n")
-			}
-
-			if e := windowsRebootPendingTemplate.Execute(&buffer, nil); nil != e {
-				return e
-			} else {
-				defaultRebootPendingCommand = strings.ReplaceAll(strings.ReplaceAll(string(buffer.Bytes()), "\r\n", "\n"), "\r", "\n")
-			}
+			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
+			defaultPwshAutoUpdateTemplate = windowsPwshAutoUpdateTemplate
+			defaultRebootPendingTemplate = windowsRebootPendingTemplate
 
 			break
 		default:
+			defaultPwshAutoUpdateTemplate = nil
+			defaultRebootPendingTemplate = nil
+
 			break
 		}
 
@@ -165,9 +160,19 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			p.config.Inline = nil
 		}
 
-		if p.config.PwshAutoUpdateIsEnabled {
-			if "" == p.config.PwshAutoUpdateCommand {
-				p.config.PwshAutoUpdateCommand = defaultPwshAutoUpdateCommand
+		if "" == p.config.PwshAutoUpdateInstallerUri {
+			p.config.PwshAutoUpdateInstallerUri = defaultPwshAutoUpdateInstallerUri
+		}
+
+		if ("" == p.config.PwshAutoUpdateCommand) && (nil != defaultPwshAutoUpdateTemplate) {
+			var buffer bytes.Buffer
+
+			if e := defaultPwshAutoUpdateTemplate.Execute(&buffer, pwshAutoUpdateOptions{
+				Uri: p.config.PwshAutoUpdateInstallerUri,
+			}); nil != e {
+				return e
+			} else {
+				p.config.PwshAutoUpdateCommand = strings.ReplaceAll(strings.ReplaceAll(string(buffer.Bytes()), "\r\n", "\n"), "\r", "\n")
 			}
 		}
 
@@ -179,12 +184,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			p.config.RebootInitiateCommand = defaultRebootInitiateCommand
 		}
 
-		if "" == p.config.RebootProgressCommand {
-			p.config.RebootProgressCommand = defaultRebootProgressCommand
+		if ("" == p.config.RebootPendingCommand) && (nil != defaultRebootPendingTemplate) {
+			var buffer bytes.Buffer
+
+			if e := defaultRebootPendingTemplate.Execute(&buffer, nil); nil != e {
+				return e
+			} else {
+				p.config.RebootPendingCommand = strings.ReplaceAll(strings.ReplaceAll(string(buffer.Bytes()), "\r\n", "\n"), "\r", "\n")
+			}
 		}
 
-		if "" == p.config.RebootPendingCommand {
-			p.config.RebootPendingCommand = defaultRebootPendingCommand
+		if "" == p.config.RebootProgressCommand {
+			p.config.RebootProgressCommand = defaultRebootProgressCommand
 		}
 
 		if "" == p.config.RebootValidateCommand {
