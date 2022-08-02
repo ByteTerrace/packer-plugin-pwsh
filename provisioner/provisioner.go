@@ -112,7 +112,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.OsType = strings.ToLower(p.config.OsType)
 
 		switch p.config.OsType {
-		case `windows`:
+		case "windows":
 			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
@@ -404,17 +404,17 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 		command = p.config.ExecuteCommand
 	} else {
 		command = p.config.ElevatedExecuteCommand
-
-		if "windows" == p.config.OsType {
-			if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
-				return exitCode, e
-			}
-		}
 	}
 
 	if command, e = interpolate.Render(command, &p.config.ctx); nil != e {
 		return exitCode, e
 	} else {
+		if ("windows" == p.config.OsType) && ("" == p.config.ElevatedUser) {
+			if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
+				return exitCode, e
+			}
+		}
+
 		if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
 			return exitCode, fmt.Errorf(pwshScriptStatingErrorFormat, e)
 		} else {
