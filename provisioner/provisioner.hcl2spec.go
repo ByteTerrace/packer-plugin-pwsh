@@ -32,6 +32,7 @@ type FlatConfig struct {
 	ElevatedExecuteCommand     *string           `mapstructure:"elevated_execute_command" cty:"elevated_execute_command" hcl:"elevated_execute_command"`
 	ElevatedPassword           *string           `mapstructure:"elevated_password" cty:"elevated_password" hcl:"elevated_password"`
 	ElevatedUser               *string           `mapstructure:"elevated_user" cty:"elevated_user" hcl:"elevated_user"`
+	OsType                     *string           `mapstructure:"os_type" cty:"os_type" hcl:"os_type"`
 	PwshAutoUpdateCommand      *string           `mapstructure:"pwsh_autoupdate_command" cty:"pwsh_autoupdate_command" hcl:"pwsh_autoupdate_command"`
 	PwshAutoUpdateInstallerUri *string           `mapstructure:"pwsh_autoupdate_installer_uri" cty:"pwsh_autoupdate_installer_uri" hcl:"pwsh_autoupdate_installer_uri"`
 	PwshAutoUpdateIsEnabled    *bool             `mapstructure:"pwsh_autoupdate_is_enabled" cty:"pwsh_autoupdate_is_enabled" hcl:"pwsh_autoupdate_is_enabled"`
@@ -79,6 +80,7 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"elevated_execute_command":      &hcldec.AttrSpec{Name: "elevated_execute_command", Type: cty.String, Required: false},
 		"elevated_password":             &hcldec.AttrSpec{Name: "elevated_password", Type: cty.String, Required: false},
 		"elevated_user":                 &hcldec.AttrSpec{Name: "elevated_user", Type: cty.String, Required: false},
+		"os_type":                       &hcldec.AttrSpec{Name: "os_type", Type: cty.String, Required: false},
 		"pwsh_autoupdate_command":       &hcldec.AttrSpec{Name: "pwsh_autoupdate_command", Type: cty.String, Required: false},
 		"pwsh_autoupdate_installer_uri": &hcldec.AttrSpec{Name: "pwsh_autoupdate_installer_uri", Type: cty.String, Required: false},
 		"pwsh_autoupdate_is_enabled":    &hcldec.AttrSpec{Name: "pwsh_autoupdate_is_enabled", Type: cty.Bool, Required: false},
