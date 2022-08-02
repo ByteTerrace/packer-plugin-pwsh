@@ -96,7 +96,9 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	); nil != e {
 		return e
 	} else {
-		defaultExecuteCommand := ""
+		defaultCommand := "chmod +x {{.Path}} && {{.Path}}"
+		defaultElevatedExecuteCommand := fmt.Sprintf("echo \"packer\" | sudo -S sh -e -c '%s'", defaultCommand)
+		defaultExecuteCommand := defaultCommand
 		defaultPwshAutoUpdateCommand := ""
 		defaultRebootCompleteCommand := ""
 		defaultRebootInitiateCommand := ""
@@ -113,6 +115,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 			defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
+			defaultElevatedExecuteCommand = defaultExecuteCommand
 			defaultRebootCompleteCommand = `shutdown /a`
 			defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
 			defaultRebootProgressCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
@@ -149,7 +152,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 
 		if "" == p.config.ElevatedExecuteCommand {
-			p.config.ElevatedExecuteCommand = defaultExecuteCommand
+			p.config.ElevatedExecuteCommand = defaultElevatedExecuteCommand
 		}
 
 		if "" == p.config.ExecuteCommand {
@@ -245,43 +248,37 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 	remotePath := p.config.RemotePath
 	p.generatedData["Path"] = remotePath
 
-	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
-		return e
-	} else {
-		ui.Say(fmt.Sprintf(`Provisioning with pwsh; command template: %s`, command))
+	for _, scriptPath := range scriptPaths {
+		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", scriptPath))
 
-		for _, scriptPath := range scriptPaths {
-			ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", scriptPath))
+		if exitCode, e := p.uploadAndExecuteScript(context, remotePath, scriptPath, ui); nil != e {
+			return e
+		} else {
+			ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", exitCode))
 
-			if exitCode, e := p.uploadAndExecuteScript(command, context, remotePath, scriptPath, ui); nil != e {
+			if p.config.ValidExitCode(exitCode); nil != e {
 				return e
 			} else {
-				ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", exitCode))
+				if p.config.RebootIsEnabled {
+					ui.Say("Checking for pending reboot...")
 
-				if p.config.ValidExitCode(exitCode); nil != e {
-					return e
-				} else {
-					if p.config.RebootIsEnabled {
-						ui.Say("Checking for pending reboot...")
-
-						if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
+					if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
+						return e
+					} else {
+						if exitCode, e = p.uploadAndExecuteScript(context, remotePath, rebootScriptPath, ui); nil != e {
 							return e
-						} else {
-							if exitCode, e = p.uploadAndExecuteScript(command, context, remotePath, rebootScriptPath, ui); nil != e {
+						} else if 1 == exitCode {
+							if e = p.rebootMachine(context, ui); nil != e {
 								return e
-							} else if 1 == exitCode {
-								if e = p.rebootMachine(context, ui); nil != e {
-									return e
-								}
 							}
 						}
 					}
 				}
 			}
 		}
-
-		return nil
 	}
+
+	return nil
 }
 func (p *Provisioner) getInlineScriptFilePath(lines []string) (string, error) {
 	if (nil == lines) || (0 == len(lines)) {
@@ -387,73 +384,80 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 	remotePath := p.config.RemotePwshAutoUpdatePath
 	p.generatedData["Path"] = remotePath
 
-	if command, e := interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
+	if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateCommand}); nil != e {
 		return e
 	} else {
-		ui.Say(fmt.Sprintf(`Updating pwsh installation; command template: %s`, command))
+		_, e = p.uploadAndExecuteScript(context, remotePath, updateScriptPath, ui)
 
-		if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateCommand}); nil != e {
-			return e
-		} else {
-			_, e = p.uploadAndExecuteScript(command, context, remotePath, updateScriptPath, ui)
-
-			return e
-		}
+		return e
 	}
 }
-func (p *Provisioner) uploadAndExecuteScript(command string, ctx context.Context, remotePath string, scriptPath string, ui packersdk.Ui) (int, error) {
+func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath string, scriptPath string, ui packersdk.Ui) (int, error) {
 	exitCode := -1
 
-	if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
-		return exitCode, fmt.Errorf(pwshScriptStatingErrorFormat, e)
-	} else {
-		if os.IsPathSeparator(remotePath[len(remotePath)-1]) {
-			remotePath += filepath.Base(scriptFileInfo.Name())
-		}
+	var command string
+	var e error
 
-		if scriptFileHandle, e := os.Open(scriptPath); nil != e {
-			return exitCode, fmt.Errorf(pwshScriptOpeningErrorFormat, e)
+	if ("" == p.config.ElevatedUser) && ("" == p.config.ElevatedPassword) {
+		command = p.config.ExecuteCommand
+	} else {
+		command = p.config.ElevatedExecuteCommand
+	}
+
+	if command, e = interpolate.Render(p.config.ExecuteCommand, &p.config.ctx); nil != e {
+		return exitCode, e
+	} else {
+		if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
+			return exitCode, fmt.Errorf(pwshScriptStatingErrorFormat, e)
 		} else {
-			if e = (retry.Config{
-				StartTimeout: defaultStartTimeout,
-				Tries:        defaultTries,
-			}.Run(
-				ctx,
-				func(ctx context.Context) error {
-					if _, e := scriptFileHandle.Seek(0, 0); nil != e {
-						return e
-					} else if e = p.communicator.Upload(remotePath, scriptFileHandle, &scriptFileInfo); nil != e {
-						return fmt.Errorf(pwshScriptUploadingErrorFormat, e)
-					} else {
-						if "" != p.config.ElevatedUser {
-							if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
+			if os.IsPathSeparator(remotePath[len(remotePath)-1]) {
+				remotePath += filepath.Base(scriptFileInfo.Name())
+			}
+
+			if scriptFileHandle, e := os.Open(scriptPath); nil != e {
+				return exitCode, fmt.Errorf(pwshScriptOpeningErrorFormat, e)
+			} else {
+				if e = (retry.Config{
+					StartTimeout: defaultStartTimeout,
+					Tries:        defaultTries,
+				}.Run(
+					ctx,
+					func(ctx context.Context) error {
+						if _, e := scriptFileHandle.Seek(0, 0); nil != e {
+							return e
+						} else if e = p.communicator.Upload(remotePath, scriptFileHandle, &scriptFileInfo); nil != e {
+							return fmt.Errorf(pwshScriptUploadingErrorFormat, e)
+						} else {
+							if "" != p.config.ElevatedUser {
+								if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
+									return e
+								}
+							}
+
+							remoteCmd := &packersdk.RemoteCmd{Command: command}
+
+							if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
 								return e
+							} else {
+								exitCode = remoteCmd.ExitStatus()
+
+								return nil
 							}
 						}
-
-						remoteCmd := &packersdk.RemoteCmd{Command: command}
-
-						if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
-							return e
-						} else {
-							exitCode = remoteCmd.ExitStatus()
-
-							return nil
-						}
+					},
+				)); nil != e {
+					return exitCode, e
+				} else {
+					if e = scriptFileHandle.Close(); nil != e {
+						return exitCode, fmt.Errorf(pwshScriptClosingErrorFormat, e)
 					}
-				},
-			)); nil != e {
-				return exitCode, e
-			} else {
-				if e = scriptFileHandle.Close(); nil != e {
-					return exitCode, fmt.Errorf(pwshScriptClosingErrorFormat, e)
-				}
 
-				if e = os.Remove(scriptFileHandle.Name()); nil != e {
-					return exitCode, fmt.Errorf(pwshScriptRemovingErrorFormat, e)
-				}
+					if e = os.Remove(scriptFileHandle.Name()); nil != e {
+						return exitCode, fmt.Errorf(pwshScriptRemovingErrorFormat, e)
+					}
 
-				return exitCode, nil
+					return exitCode, nil
+				}
 			}
 		}
 	}
