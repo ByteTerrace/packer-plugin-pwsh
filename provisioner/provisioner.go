@@ -150,12 +150,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			return fmt.Sprintf(defaultRemotePathFormat, defaultRemoteScriptDirectoryPath, suffix, defaultRemoteScriptExtension)
 		}
 
-		if "" == p.config.ElevatedExecuteCommand {
-			p.config.ElevatedExecuteCommand = fmt.Sprintf(defaultElevatedExecuteCommandFormat, defaultExecuteCommand)
-		}
-
 		if "" == p.config.ExecuteCommand {
 			p.config.ExecuteCommand = defaultExecuteCommand
+		}
+
+		if "" == p.config.ElevatedExecuteCommand {
+			p.config.ElevatedExecuteCommand = fmt.Sprintf(defaultElevatedExecuteCommandFormat, p.config.ExecuteCommand)
 		}
 
 		if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
