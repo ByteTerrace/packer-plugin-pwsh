@@ -97,7 +97,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	); nil != e {
 		return e
 	} else {
-		defaultCommand := "chmod +x {{.Path}} && {{.Path}}"
+		defaultCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
+		defaultCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
+		defaultCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
+		defaultCommand += `&'{{.Path}}'; exit $LastExitCode;")`
 		defaultElevatedExecuteCommand := fmt.Sprintf("echo \"packer\" | sudo -S sh -e -c '%s'", defaultCommand)
 		defaultExecuteCommand := defaultCommand
 		defaultPwshAutoUpdateInstallerUri := ""
