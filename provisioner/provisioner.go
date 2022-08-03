@@ -70,6 +70,9 @@ func (p *Provisioner) Communicator() packersdk.Communicator {
 	return p.communicator
 }
 func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec { return p.config.FlatMapstructure().HCL2Spec() }
+func (p *Provisioner) ElevatedExecuteCommand() string {
+	return fmt.Sprintf(p.config.ElevatedExecuteCommand, p.config.ExecuteCommand)
+}
 func (p *Provisioner) ElevatedPassword() string {
 	elevatedPassword, _ := interpolate.Render(p.config.ElevatedPassword, &p.config.ctx)
 
@@ -103,7 +106,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultElevatedUser = "packer"
 		}
 
-		defaultElevatedExecuteCommandFormat := fmt.Sprintf(`echo "%s" | sudo -S sh -e -c '%%s'`, defaultElevatedUser)
+		defaultElevatedExecuteCommand := fmt.Sprintf(`echo "%s" | sudo -S sh -e -c '%%s'`, defaultElevatedUser)
 		defaultExecuteCommand := `chmod +x ${{.Path}} && pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 		defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 		defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
@@ -132,7 +135,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 			break
 		case "windows":
-			defaultElevatedExecuteCommandFormat = `%s`
+			defaultElevatedExecuteCommand = `%s`
 			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
@@ -158,12 +161,12 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			return fmt.Sprintf(defaultRemotePathFormat, defaultRemoteScriptDirectoryPath, suffix, extension)
 		}
 
-		if "" == p.config.ExecuteCommand {
-			p.config.ExecuteCommand = defaultExecuteCommand
+		if "" == p.config.ElevatedExecuteCommand {
+			p.config.ElevatedExecuteCommand = defaultElevatedExecuteCommand
 		}
 
-		if "" == p.config.ElevatedExecuteCommand {
-			p.config.ElevatedExecuteCommand = fmt.Sprintf(defaultElevatedExecuteCommandFormat, p.config.ExecuteCommand)
+		if "" == p.config.ExecuteCommand {
+			p.config.ExecuteCommand = defaultExecuteCommand
 		}
 
 		if (nil != p.config.Inline) && (0 == len(p.config.Inline)) {
@@ -408,12 +411,9 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 	if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateCommand}); nil != e {
 		return e
 	} else {
-		originalElevatedExecuteCommand := p.config.ElevatedExecuteCommand
 		originalExecuteCommand := p.config.ExecuteCommand
-		p.config.ElevatedExecuteCommand = p.config.PwshAutoUpdateExecuteCommand
 		p.config.ExecuteCommand = p.config.PwshAutoUpdateExecuteCommand
 		_, e = p.uploadAndExecuteScript(context, remotePath, updateScriptPath, ui)
-		p.config.ElevatedExecuteCommand = originalElevatedExecuteCommand
 		p.config.ExecuteCommand = originalExecuteCommand
 
 		return e
@@ -424,10 +424,10 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 
 	var command string
 
-	if "" == p.config.ElevatedUser {
-		command = p.config.ExecuteCommand
+	if "" != p.config.ElevatedUser {
+		command = p.ElevatedExecuteCommand()
 	} else {
-		command = p.config.ElevatedExecuteCommand
+		command = p.config.ExecuteCommand
 	}
 
 	if command, e := interpolate.Render(command, &p.config.ctx); nil != e {
