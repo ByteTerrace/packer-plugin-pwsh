@@ -97,7 +97,13 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	); nil != e {
 		return e
 	} else {
-		defaultElevatedExecuteCommandFormat := `echo "packer" | sudo -S sh -e -c '%s'`
+		defaultElevatedUser := p.config.ElevatedUser
+
+		if "" == defaultElevatedUser {
+			defaultElevatedUser = "packer"
+		}
+
+		defaultElevatedExecuteCommandFormat := fmt.Sprintf(`echo "%s" | sudo -S sh -e -c '%%s'`, defaultElevatedUser)
 		defaultExecuteCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 		defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 		defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
