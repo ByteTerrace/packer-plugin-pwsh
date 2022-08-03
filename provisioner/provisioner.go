@@ -417,12 +417,6 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 		command = p.config.ExecuteCommand
 	} else {
 		command = p.config.ElevatedExecuteCommand
-
-		if "windows" == p.config.OsType {
-			if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
-				return exitCode, e
-			}
-		}
 	}
 
 	if command, e = interpolate.Render(command, &p.config.ctx); nil != e {
@@ -449,6 +443,12 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 						} else if e = p.communicator.Upload(remotePath, scriptFileHandle, &scriptFileInfo); nil != e {
 							return fmt.Errorf(pwshScriptUploadingErrorFormat, e)
 						} else {
+							if ("windows" == p.config.OsType) && ("" != p.config.ElevatedUser) {
+								if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
+									return e
+								}
+							}
+
 							remoteCmd := &packersdk.RemoteCmd{Command: command}
 
 							if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
