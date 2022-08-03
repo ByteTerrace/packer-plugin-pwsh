@@ -169,10 +169,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		if ("" == p.config.PwshAutoUpdateCommand) && (nil != defaultPwshAutoUpdateTemplate) {
 			var buffer bytes.Buffer
 
-			if e := defaultPwshAutoUpdateTemplate.Execute(&buffer, pwshAutoUpdateOptions{
+			if err := defaultPwshAutoUpdateTemplate.Execute(&buffer, pwshAutoUpdateOptions{
 				Uri: p.config.PwshAutoUpdateInstallerUri,
 			}); nil != e {
-				return e
+				e = packersdk.MultiErrorAppend(e, err)
 			} else {
 				p.config.PwshAutoUpdateCommand = strings.ReplaceAll(strings.ReplaceAll(string(buffer.Bytes()), "\r\n", "\n"), "\r", "\n")
 			}
@@ -189,8 +189,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		if ("" == p.config.RebootPendingCommand) && (nil != defaultRebootPendingTemplate) {
 			var buffer bytes.Buffer
 
-			if e := defaultRebootPendingTemplate.Execute(&buffer, nil); nil != e {
-				return e
+			if err := defaultRebootPendingTemplate.Execute(&buffer, nil); nil != e {
+				e = packersdk.MultiErrorAppend(e, err)
 			} else {
 				p.config.RebootPendingCommand = strings.ReplaceAll(strings.ReplaceAll(string(buffer.Bytes()), "\r\n", "\n"), "\r", "\n")
 			}
