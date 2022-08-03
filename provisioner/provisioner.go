@@ -408,9 +408,12 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 	if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateCommand}); nil != e {
 		return e
 	} else {
+		originalElevatedExecuteCommand := p.config.ElevatedExecuteCommand
 		originalExecuteCommand := p.config.ExecuteCommand
+		p.config.ElevatedExecuteCommand = p.config.PwshAutoUpdateExecuteCommand
 		p.config.ExecuteCommand = p.config.PwshAutoUpdateExecuteCommand
 		_, e = p.uploadAndExecuteScript(context, remotePath, updateScriptPath, ui)
+		p.config.ElevatedExecuteCommand = originalElevatedExecuteCommand
 		p.config.ExecuteCommand = originalExecuteCommand
 
 		return e
@@ -420,7 +423,6 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 	exitCode := -1
 
 	var command string
-	var e error
 
 	if "" == p.config.ElevatedUser {
 		command = p.config.ExecuteCommand
@@ -428,7 +430,7 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 		command = p.config.ElevatedExecuteCommand
 	}
 
-	if command, e = interpolate.Render(command, &p.config.ctx); nil != e {
+	if command, e := interpolate.Render(command, &p.config.ctx); nil != e {
 		return exitCode, e
 	} else {
 		if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
