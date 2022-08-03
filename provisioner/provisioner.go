@@ -124,9 +124,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 		switch p.config.OsType {
 		case "debian":
-		case "ubuntu":
-			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/powershell_7.2.5-1.deb_amd64.deb"
 			defaultPwshAutoUpdateTemplate = debianPwshAutoUpdateTemplate
+
+			break
+		case "ubuntu":
+			defaultPwshAutoUpdateTemplate = ubuntuPwshAutoUpdateTemplate
 
 			break
 		case "windows":
