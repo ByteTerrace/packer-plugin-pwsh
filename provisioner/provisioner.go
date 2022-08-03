@@ -41,22 +41,22 @@ type Config struct {
 	shell.Provisioner               `mapstructure:",squash"`
 	shell.ProvisionerRemoteSpecific `mapstructure:",squash"`
 
-	ElevatedEnvVarFormat       string `mapstructure:"elevated_env_var_format"`
-	ElevatedExecuteCommand     string `mapstructure:"elevated_execute_command"`
-	ElevatedPassword           string `mapstructure:"elevated_password"`
-	ElevatedUser               string `mapstructure:"elevated_user"`
-	OsType                     string `mapstructure:"os_type"`
-	PwshAutoUpdateCommand      string `mapstructure:"pwsh_autoupdate_command"`
-	PwshAutoUpdateInstallerUri string `mapstructure:"pwsh_autoupdate_installer_uri"`
-	PwshAutoUpdateIsEnabled    bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
-	RebootCompleteCommand      string `mapstructure:"reboot_complete_command"`
-	RebootInitiateCommand      string `mapstructure:"reboot_initiate_command"`
-	RebootIsEnabled            bool   `mapstructure:"reboot_is_enabled"`
-	RebootPendingCommand       string `mapstructure:"reboot_pending_command"`
-	RebootProgressCommand      string `mapstructure:"reboot_progress_command"`
-	RebootValidateCommand      string `mapstructure:"reboot_validate_command"`
-	RemoteEnvVarPath           string `mapstructure:"remote_env_var_path"`
-	RemotePwshAutoUpdatePath   string `mapstructure:"remote_pwsh_autoupdate_path"`
+	ElevatedEnvVarFormat         string `mapstructure:"elevated_env_var_format"`
+	ElevatedExecuteCommand       string `mapstructure:"elevated_execute_command"`
+	ElevatedPassword             string `mapstructure:"elevated_password"`
+	ElevatedUser                 string `mapstructure:"elevated_user"`
+	OsType                       string `mapstructure:"os_type"`
+	PwshAutoUpdateCommand        string `mapstructure:"pwsh_autoupdate_command"`
+	PwshAutoUpdateExecuteCommand string `mapstructure:"pwsh_autoupdate_execute_command"`
+	PwshAutoUpdateIsEnabled      bool   `mapstructure:"pwsh_autoupdate_is_enabled"`
+	RebootCompleteCommand        string `mapstructure:"reboot_complete_command"`
+	RebootInitiateCommand        string `mapstructure:"reboot_initiate_command"`
+	RebootIsEnabled              bool   `mapstructure:"reboot_is_enabled"`
+	RebootPendingCommand         string `mapstructure:"reboot_pending_command"`
+	RebootProgressCommand        string `mapstructure:"reboot_progress_command"`
+	RebootValidateCommand        string `mapstructure:"reboot_validate_command"`
+	RemoteEnvVarPath             string `mapstructure:"remote_env_var_path"`
+	RemotePwshAutoUpdatePath     string `mapstructure:"remote_pwsh_autoupdate_path"`
 
 	ctx interpolate.Context
 }
@@ -104,18 +104,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 
 		defaultElevatedExecuteCommandFormat := fmt.Sprintf(`echo "%s" | sudo -S sh -e -c '%%s'`, defaultElevatedUser)
-		defaultExecuteCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
+		defaultExecuteCommand := `chmod +x ${{.Path}} && pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 		defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 		defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 		defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;"`
-		defaultPwshAutoUpdateInstallerUri := ""
+		defaultPwshAutoUpdateExecuteCommand := "chmod +x ${{.Path}} && ${{.Path}}"
+		defaultPwshAutoUpdateScriptExtension := `sh`
 		defaultRebootCompleteCommand := ""
 		defaultRebootInitiateCommand := ""
 		defaultRebootProgressCommand := ""
 		defaultRebootValidateCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "exit 0;"`
 		defaultRemotePathFormat := `%s/packer-pwsh-%s-%%s.%s`
 		defaultRemoteScriptDirectoryPath := `/tmp`
-		defaultRemoteScriptExtension := `sh`
 
 		var defaultPwshAutoUpdateTemplate *template.Template
 		var defaultRebootPendingTemplate *template.Template
@@ -137,14 +137,14 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 			defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
-			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
+			defaultPwshAutoUpdateExecuteCommand = defaultExecuteCommand
+			defaultPwshAutoUpdateScriptExtension = `.ps1`
 			defaultPwshAutoUpdateTemplate = windowsPwshAutoUpdateTemplate
 			defaultRebootCompleteCommand = `shutdown /a`
 			defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
 			defaultRebootPendingTemplate = windowsRebootPendingTemplate
 			defaultRebootProgressCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 			defaultRemoteScriptDirectoryPath = `C:/Windows/Temp`
-			defaultRemoteScriptExtension = `.ps1`
 
 			break
 		default:
@@ -154,8 +154,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			break
 		}
 
-		var formatRemotePath = func(suffix string) string {
-			return fmt.Sprintf(defaultRemotePathFormat, defaultRemoteScriptDirectoryPath, suffix, defaultRemoteScriptExtension)
+		var formatRemotePath = func(extension string, suffix string) string {
+			return fmt.Sprintf(defaultRemotePathFormat, defaultRemoteScriptDirectoryPath, suffix, extension)
 		}
 
 		if "" == p.config.ExecuteCommand {
@@ -170,20 +170,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			p.config.Inline = nil
 		}
 
-		if "" == p.config.PwshAutoUpdateInstallerUri {
-			p.config.PwshAutoUpdateInstallerUri = defaultPwshAutoUpdateInstallerUri
-		}
-
 		if ("" == p.config.PwshAutoUpdateCommand) && (nil != defaultPwshAutoUpdateTemplate) {
 			var buffer bytes.Buffer
 
-			if err := defaultPwshAutoUpdateTemplate.Execute(&buffer, pwshAutoUpdateOptions{
-				Uri: p.config.PwshAutoUpdateInstallerUri,
-			}); nil != e {
+			if err := defaultPwshAutoUpdateTemplate.Execute(&buffer, nil); nil != e {
 				e = packersdk.MultiErrorAppend(e, err)
 			} else {
 				p.config.PwshAutoUpdateCommand = strings.ReplaceAll(strings.ReplaceAll(string(buffer.Bytes()), "\r\n", "\n"), "\r", "\n")
 			}
+		}
+
+		if "" == p.config.PwshAutoUpdateExecuteCommand {
+			p.config.PwshAutoUpdateExecuteCommand = defaultPwshAutoUpdateExecuteCommand
 		}
 
 		if "" == p.config.RebootCompleteCommand {
@@ -213,15 +211,15 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 
 		if "" == p.config.RemoteEnvVarPath {
-			p.config.RemoteEnvVarPath = fmt.Sprintf(formatRemotePath("variables"), uuid.TimeOrderedUUID())
+			p.config.RemoteEnvVarPath = fmt.Sprintf(formatRemotePath("variables", ".ps1"), uuid.TimeOrderedUUID())
 		}
 
 		if "" == p.config.RemotePath {
-			p.config.RemotePath = fmt.Sprintf(formatRemotePath("script"), uuid.TimeOrderedUUID())
+			p.config.RemotePath = fmt.Sprintf(formatRemotePath("script", ".ps1"), uuid.TimeOrderedUUID())
 		}
 
 		if "" == p.config.RemotePwshAutoUpdatePath {
-			p.config.RemotePwshAutoUpdatePath = fmt.Sprintf(formatRemotePath("installer"), uuid.TimeOrderedUUID())
+			p.config.RemotePwshAutoUpdatePath = fmt.Sprintf(formatRemotePath("installer", defaultPwshAutoUpdateScriptExtension), uuid.TimeOrderedUUID())
 		}
 
 		if nil == p.config.Scripts {
@@ -271,10 +269,18 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 	remotePath := p.config.RemotePath
 	p.generatedData["Path"] = remotePath
 
+	var command string
+
+	if "" == p.config.ElevatedUser {
+		command = p.config.ExecuteCommand
+	} else {
+		command = p.config.ElevatedExecuteCommand
+	}
+
 	for _, scriptPath := range scriptPaths {
 		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", scriptPath))
 
-		if exitCode, e := p.uploadAndExecuteScript(context, remotePath, scriptPath, ui); nil != e {
+		if exitCode, e := p.uploadAndExecuteScript(command, context, remotePath, scriptPath, ui); nil != e {
 			return e
 		} else {
 			ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", exitCode))
@@ -288,7 +294,7 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 					if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
 						return e
 					} else {
-						if exitCode, e = p.uploadAndExecuteScript(context, remotePath, rebootScriptPath, ui); nil != e {
+						if exitCode, e = p.uploadAndExecuteScript(command, context, remotePath, rebootScriptPath, ui); nil != e {
 							return e
 						} else if 1 == exitCode {
 							if e = p.rebootMachine(context, ui); nil != e {
@@ -410,24 +416,15 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 	if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateCommand}); nil != e {
 		return e
 	} else {
-		_, e = p.uploadAndExecuteScript(context, remotePath, updateScriptPath, ui)
+		_, e = p.uploadAndExecuteScript(p.config.PwshAutoUpdateExecuteCommand, context, remotePath, updateScriptPath, ui)
 
 		return e
 	}
 }
-func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath string, scriptPath string, ui packersdk.Ui) (int, error) {
+func (p *Provisioner) uploadAndExecuteScript(command string, ctx context.Context, remotePath string, scriptPath string, ui packersdk.Ui) (int, error) {
 	exitCode := -1
 
-	var command string
-	var e error
-
-	if "" == p.config.ElevatedUser {
-		command = p.config.ExecuteCommand
-	} else {
-		command = p.config.ElevatedExecuteCommand
-	}
-
-	if command, e = interpolate.Render(command, &p.config.ctx); nil != e {
+	if command, e := interpolate.Render(command, &p.config.ctx); nil != e {
 		return exitCode, e
 	} else {
 		if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
