@@ -422,12 +422,6 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 	if command, e = interpolate.Render(command, &p.config.ctx); nil != e {
 		return exitCode, e
 	} else {
-		if ("windows" == p.config.OsType) && ("" == p.config.ElevatedUser) {
-			if command, e = guestexec.GenerateElevatedRunner(command, p); nil != e {
-				return exitCode, e
-			}
-		}
-
 		if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
 			return exitCode, fmt.Errorf(pwshScriptStatingErrorFormat, e)
 		} else {
