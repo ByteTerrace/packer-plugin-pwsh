@@ -107,11 +107,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 
 		defaultElevatedExecuteCommand := fmt.Sprintf(`echo "%s" | sudo -S sh -e -c '%%s'`, defaultElevatedUser)
-		defaultExecuteCommand := `chmod +x ${{.Path}} && pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
+		defaultExecuteCommand := `chmod +x {{.Path}} && pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 		defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 		defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 		defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;"`
-		defaultPwshAutoUpdateExecuteCommand := "chmod +x ${{.Path}} && ${{.Path}}"
+		defaultPwshAutoUpdateExecuteCommand := "chmod +x {{.Path}} && {{.Path}}"
 		defaultPwshAutoUpdateScriptExtension := `sh`
 		defaultRebootCompleteCommand := ""
 		defaultRebootInitiateCommand := ""
