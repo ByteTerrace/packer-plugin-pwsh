@@ -97,15 +97,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	); nil != e {
 		return e
 	} else {
-		if "" == p.config.ExecuteCommand {
-			p.config.ExecuteCommand = `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
-			p.config.ExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
-			p.config.ExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
-			p.config.ExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
-		}
-
 		defaultElevatedExecuteCommand := fmt.Sprintf("echo \"packer\" | sudo -S sh -e -c '%s'", p.config.ExecuteCommand)
-		defaultExecuteCommand := p.config.ExecuteCommand
+		defaultExecuteCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
+		defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
+		defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
+		defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
 		defaultPwshAutoUpdateInstallerUri := ""
 		defaultRebootCompleteCommand := ""
 		defaultRebootInitiateCommand := ""
@@ -141,12 +137,6 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 			defaultPwshAutoUpdateTemplate = windowsPwshAutoUpdateTemplate
 			defaultRebootPendingTemplate = windowsRebootPendingTemplate
-
-			if "" == p.config.ElevatedUser {
-				if p.config.ExecuteCommand, e = guestexec.GenerateElevatedRunner(defaultExecuteCommand, p); nil != e {
-					return e
-				}
-			}
 
 			break
 		default:
@@ -242,6 +232,14 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			e = packersdk.MultiErrorAppend(e, errors.New("Either a script file or an inline script must be specified."))
 		} else if (nil != p.config.Inline) && (0 < len(p.config.Scripts)) {
 			e = packersdk.MultiErrorAppend(e, errors.New("Only a script file or an inline script can be specified, not both."))
+		}
+
+		if ("windows" == p.config.OsType) && ("" != p.config.ElevatedUser) {
+			if cmd, err := guestexec.GenerateElevatedRunner(p.config.ElevatedExecuteCommand, p); nil != e {
+				e = packersdk.MultiErrorAppend(e, err)
+			} else {
+				p.config.ElevatedExecuteCommand = cmd
+			}
 		}
 
 		if nil != e {
