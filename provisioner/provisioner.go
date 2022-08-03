@@ -269,18 +269,10 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 	remotePath := p.config.RemotePath
 	p.generatedData["Path"] = remotePath
 
-	var command string
-
-	if "" == p.config.ElevatedUser {
-		command = p.config.ExecuteCommand
-	} else {
-		command = p.config.ElevatedExecuteCommand
-	}
-
 	for _, scriptPath := range scriptPaths {
 		ui.Say(fmt.Sprintf("Provisioning with pwsh; script path: %s", scriptPath))
 
-		if exitCode, e := p.uploadAndExecuteScript(command, context, remotePath, scriptPath, ui); nil != e {
+		if exitCode, e := p.uploadAndExecuteScript(context, remotePath, scriptPath, ui); nil != e {
 			return e
 		} else {
 			ui.Say(fmt.Sprintf("Provisioning with pwsh; exit code: %d", exitCode))
@@ -294,7 +286,7 @@ func (p *Provisioner) executeScriptCollection(context context.Context, scriptPat
 					if rebootScriptPath, e := p.getInlineScriptFilePath([]string{p.config.RebootPendingCommand}); nil != e {
 						return e
 					} else {
-						if exitCode, e = p.uploadAndExecuteScript(command, context, remotePath, rebootScriptPath, ui); nil != e {
+						if exitCode, e = p.uploadAndExecuteScript(context, remotePath, rebootScriptPath, ui); nil != e {
 							return e
 						} else if 1 == exitCode {
 							if e = p.rebootMachine(context, ui); nil != e {
@@ -416,15 +408,27 @@ func (p *Provisioner) updatePwshInstallation(context context.Context, ui packers
 	if updateScriptPath, e := p.getInlineScriptFilePath([]string{p.config.PwshAutoUpdateCommand}); nil != e {
 		return e
 	} else {
-		_, e = p.uploadAndExecuteScript(p.config.PwshAutoUpdateExecuteCommand, context, remotePath, updateScriptPath, ui)
+		originalExecuteCommand := p.config.ExecuteCommand
+		p.config.ExecuteCommand = p.config.PwshAutoUpdateExecuteCommand
+		_, e = p.uploadAndExecuteScript(context, remotePath, updateScriptPath, ui)
+		p.config.ExecuteCommand = originalExecuteCommand
 
 		return e
 	}
 }
-func (p *Provisioner) uploadAndExecuteScript(command string, ctx context.Context, remotePath string, scriptPath string, ui packersdk.Ui) (int, error) {
+func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath string, scriptPath string, ui packersdk.Ui) (int, error) {
 	exitCode := -1
 
-	if command, e := interpolate.Render(command, &p.config.ctx); nil != e {
+	var command string
+	var e error
+
+	if "" == p.config.ElevatedUser {
+		command = p.config.ExecuteCommand
+	} else {
+		command = p.config.ElevatedExecuteCommand
+	}
+
+	if command, e = interpolate.Render(command, &p.config.ctx); nil != e {
 		return exitCode, e
 	} else {
 		if scriptFileInfo, e := os.Stat(scriptPath); nil != e {
