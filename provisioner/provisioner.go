@@ -138,7 +138,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 			defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
 			defaultPwshAutoUpdateExecuteCommand = defaultExecuteCommand
-			defaultPwshAutoUpdateScriptExtension = `.ps1`
+			defaultPwshAutoUpdateScriptExtension = `ps1`
 			defaultPwshAutoUpdateTemplate = windowsPwshAutoUpdateTemplate
 			defaultRebootCompleteCommand = `shutdown /a`
 			defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
@@ -211,15 +211,15 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 
 		if "" == p.config.RemoteEnvVarPath {
-			p.config.RemoteEnvVarPath = fmt.Sprintf(formatRemotePath("variables", ".ps1"), uuid.TimeOrderedUUID())
+			p.config.RemoteEnvVarPath = fmt.Sprintf(formatRemotePath("ps1", "variables"), uuid.TimeOrderedUUID())
 		}
 
 		if "" == p.config.RemotePath {
-			p.config.RemotePath = fmt.Sprintf(formatRemotePath("script", ".ps1"), uuid.TimeOrderedUUID())
+			p.config.RemotePath = fmt.Sprintf(formatRemotePath("ps1", "script"), uuid.TimeOrderedUUID())
 		}
 
 		if "" == p.config.RemotePwshAutoUpdatePath {
-			p.config.RemotePwshAutoUpdatePath = fmt.Sprintf(formatRemotePath("installer", defaultPwshAutoUpdateScriptExtension), uuid.TimeOrderedUUID())
+			p.config.RemotePwshAutoUpdatePath = fmt.Sprintf(formatRemotePath(defaultPwshAutoUpdateScriptExtension, "installer"), uuid.TimeOrderedUUID())
 		}
 
 		if nil == p.config.Scripts {
