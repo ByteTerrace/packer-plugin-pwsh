@@ -97,11 +97,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	); nil != e {
 		return e
 	} else {
+		defaultElevatedExecuteCommandFormat := `echo "packer" | sudo -S sh -e -c '%s'`
 		defaultExecuteCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 		defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 		defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 		defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;"`
-		defaultElevatedExecuteCommand := fmt.Sprintf("echo \"packer\" | sudo -S sh -e -c '%s'", defaultExecuteCommand)
 		defaultPwshAutoUpdateInstallerUri := ""
 		defaultRebootCompleteCommand := ""
 		defaultRebootInitiateCommand := ""
@@ -124,11 +124,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 			break
 		case "windows":
+			defaultElevatedExecuteCommandFormat = `%s`
 			defaultExecuteCommand = `FOR /F "tokens=* USEBACKQ" %F IN (` + "`where pwsh /R \"%PROGRAMFILES%\\PowerShell\" ^2^>nul ^|^| where powershell`" + `) DO ("%F" -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 			defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 			defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
-			defaultElevatedExecuteCommand = defaultExecuteCommand
 			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
 			defaultPwshAutoUpdateTemplate = windowsPwshAutoUpdateTemplate
 			defaultRebootCompleteCommand = `shutdown /a`
@@ -151,7 +151,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 
 		if "" == p.config.ElevatedExecuteCommand {
-			p.config.ElevatedExecuteCommand = defaultElevatedExecuteCommand
+			p.config.ElevatedExecuteCommand = fmt.Sprintf(defaultElevatedExecuteCommandFormat, defaultExecuteCommand)
 		}
 
 		if "" == p.config.ExecuteCommand {
