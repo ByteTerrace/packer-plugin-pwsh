@@ -97,11 +97,11 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	); nil != e {
 		return e
 	} else {
-		defaultElevatedExecuteCommand := fmt.Sprintf("echo \"packer\" | sudo -S sh -e -c '%s'", p.config.ExecuteCommand)
 		defaultExecuteCommand := `pwsh -ExecutionPolicy "Bypass" -NoLogo -NonInteractive -NoProfile -Command "`
 		defaultExecuteCommand += `if (Test-Path variable:global:ErrorActionPreference) { Set-Variable -Name variable:global:ErrorActionPreference -Value ([Management.Automation.ActionPreference]::Stop); } `
 		defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 		defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
+		defaultElevatedExecuteCommand := fmt.Sprintf("echo \"packer\" | sudo -S sh -e -c '%s'", defaultExecuteCommand)
 		defaultPwshAutoUpdateInstallerUri := ""
 		defaultRebootCompleteCommand := ""
 		defaultRebootInitiateCommand := ""
