@@ -129,14 +129,14 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			defaultExecuteCommand += `if (Test-Path variable:global:ProgressPreference) { Set-Variable -Name variable:global:ProgressPreference -Value ([Management.Automation.ActionPreference]::SilentlyContinue); } `
 			defaultExecuteCommand += `&'{{.Path}}'; exit $LastExitCode;")`
 			defaultElevatedExecuteCommand = defaultExecuteCommand
+			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
+			defaultPwshAutoUpdateTemplate = windowsPwshAutoUpdateTemplate
 			defaultRebootCompleteCommand = `shutdown /a`
 			defaultRebootInitiateCommand = `shutdown /r /f /t 0 /c "packer reboot"`
+			defaultRebootPendingTemplate = windowsRebootPendingTemplate
 			defaultRebootProgressCommand = `shutdown /r /f /t 60 /c "packer reboot test"`
 			defaultRemoteScriptDirectoryPath = `C:/Windows/Temp`
 			defaultRemoteScriptExtension = `.ps1`
-			defaultPwshAutoUpdateInstallerUri = "https://github.com/PowerShell/PowerShell/releases/download/v7.2.5/PowerShell-7.2.5-win-x64.msi"
-			defaultPwshAutoUpdateTemplate = windowsPwshAutoUpdateTemplate
-			defaultRebootPendingTemplate = windowsRebootPendingTemplate
 
 			break
 		default:
@@ -232,14 +232,6 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 			e = packersdk.MultiErrorAppend(e, errors.New("Either a script file or an inline script must be specified."))
 		} else if (nil != p.config.Inline) && (0 < len(p.config.Scripts)) {
 			e = packersdk.MultiErrorAppend(e, errors.New("Only a script file or an inline script can be specified, not both."))
-		}
-
-		if ("windows" == p.config.OsType) && ("" != p.config.ElevatedUser) {
-			if cmd, err := guestexec.GenerateElevatedRunner(p.config.ElevatedExecuteCommand, p); nil != e {
-				e = packersdk.MultiErrorAppend(e, err)
-			} else {
-				p.config.ElevatedExecuteCommand = cmd
-			}
 		}
 
 		if nil != e {
@@ -457,6 +449,12 @@ func (p *Provisioner) uploadAndExecuteScript(ctx context.Context, remotePath str
 						} else if e = p.communicator.Upload(remotePath, scriptFileHandle, &scriptFileInfo); nil != e {
 							return fmt.Errorf(pwshScriptUploadingErrorFormat, e)
 						} else {
+							if ("windows" == p.config.OsType) && ("" != p.config.ElevatedUser) {
+								if command, e = guestexec.GenerateElevatedRunner(p.config.ElevatedExecuteCommand, p); nil != e {
+									return e
+								}
+							}
+
 							remoteCmd := &packersdk.RemoteCmd{Command: command}
 
 							if e = remoteCmd.RunWithUi(ctx, p.communicator, ui); nil != e {
